@@ -8,7 +8,6 @@ export class BotUpdate {
 
   @Start()
   async onStart(@Ctx() ctx: BotContext) {
-    console.log('bot update ishladi');
     return this.botService.sendStartMessage(ctx);
   }
 

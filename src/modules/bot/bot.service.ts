@@ -16,7 +16,6 @@ export class BotService {
   ) {}
 
   async sendStartMessage(ctx: BotContext) {
-    console.log('start');
     const userId = ctx.from?.id;
     if (!userId) return ctx.reply('Foydalanuvchi topilmadi');
 

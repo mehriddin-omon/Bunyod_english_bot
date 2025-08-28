@@ -5,7 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { session } from 'telegraf';
 
 import { AppService } from './app.service';
-import { LessonModule } from './modules/lesson/lesson.module';
+// import { LessonModule } from './modules/lesson/lesson.module';
 import { UserModule } from './modules/user/user.module';
 import { BotModule } from './modules/bot/bot.module';
 import { APP_GUARD } from '@nestjs/core';
@@ -25,7 +25,7 @@ import { AdminGuard } from './common/guard/admin.guard';
       inject: [ConfigService],
       useFactory: (config: ConfigService): TelegrafModuleOptions => {
         const token = config.get<string>('TELEGRAM_TOKEN');
-        // console.log(token);
+        console.log(token);
         if (!token)
           throw new Error('Missing TELEGRAM_TOKEN in .env');
 
@@ -53,8 +53,8 @@ import { AdminGuard } from './common/guard/admin.guard';
     }),
 
     // 📦 Feature modules
-    LessonModule,
-    UserModule,
+    // LessonModule,
+    // UserModule,
     BotModule,
   ],
   providers: [
@@ -62,7 +62,7 @@ import { AdminGuard } from './common/guard/admin.guard';
     //   provide: APP_GUARD,
     //   useClass: AdminGuard
     // },
-    AppService
+    // AppService
   ],
 })
 export class AppModule { }

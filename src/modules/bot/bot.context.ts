@@ -10,7 +10,7 @@ export interface LessonField {
 }
 
 export interface SessionData {
-  data?: Record<string, LessonField>; // ✅ index signature qo‘shildi
+  data: Record<string, LessonField>; // ✅ index signature qo‘shildi
   awaiting?: string | null;
   lessonId?: number | null;
 }
