@@ -8,7 +8,6 @@ import { TEACHER_ID } from 'src/common/utils/const';
 
 @Injectable()
 export class UserService {
-
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,

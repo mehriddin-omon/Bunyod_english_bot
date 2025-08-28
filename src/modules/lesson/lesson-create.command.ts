@@ -7,7 +7,7 @@ import {
 } from 'nestjs-telegraf';
 import { Markup } from 'telegraf';
 import { LessonService } from './lesson.service';
-import { BotService } from '../bot/bot.service';
+// import { BotService } from '../bot/bot.service';
 import { AdminGuard } from 'src/common/guard/admin.guard';
 import type { BotContext } from '../bot/bot.context';
 import { ResourceType } from 'src/common/utils/enum';
@@ -49,6 +49,8 @@ export class LessonCreateCommand {
 
   @On("text")
   async handleText(@Ctx() ctx: BotContext) {
+    console.log( 'text degan joydan ',ctx);
+    
     const field = ctx.session?.awaiting;
     if (!field || !ctx.message || !('text' in ctx.message)) return;
 
