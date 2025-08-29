@@ -8,12 +8,13 @@ export class BotUpdate {
 
   @Start()
   async onStart(@Ctx() ctx: BotContext) {
-    // console.log('bot update ishladi');
     return this.botService.sendStartMessage(ctx);
   }
 
   @Action('check_membership')
   async checkMembership(@Ctx() ctx: BotContext) {
+    console.log('object chiqadi');
+    
     return this.botService.confirmMembership(ctx);
   }
 }

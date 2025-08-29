@@ -12,7 +12,7 @@ import { UserModule } from '../user/user.module';
   imports: [
     BotModule,
     UserModule,
-    forwardRef(() => BotModule),
+    // forwardRef(() => BotModule),
     TypeOrmModule.forFeature([Lesson, LessonResource, Test])
   ],
   providers: [LessonService, LessonCreateCommand],

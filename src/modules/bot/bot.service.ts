@@ -1,5 +1,5 @@
 import { InjectBot } from 'nestjs-telegraf';
-import { Telegraf } from 'telegraf';
+import { Markup, Telegraf } from 'telegraf';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { UserService } from 'src/modules/user/user.service';
@@ -13,7 +13,7 @@ export class BotService {
   constructor(
     @InjectBot() private readonly bot: Telegraf<BotContext>,
     private readonly userService: UserService,
-  ) {}
+  ) { }
 
   async sendStartMessage(ctx: BotContext) {
     const userId = ctx.from?.id;
@@ -53,22 +53,20 @@ export class BotService {
         },
       });
     }
-
-    await this.userService.createOrUpdateFromTelegram(ctx.from);
+    // check_membership
+    // await this.userService.createOrUpdateFromTelegram(ctx.from);
     const role = await this.userService.getRole(userId);
     return role === 'admin' ? this.showTeacherMenu(ctx) : this.showStudentMenu(ctx);
   }
 
   async showTeacherMenu(ctx: BotContext) {
-    return ctx.reply("Xush kelibsiz ustoz! Amallarni tanlang 👇", {
-      reply_markup: {
-        keyboard: [
-          ["➕ Dars qo'shish"],
-          ["📚 Darslar"],
-        ],
-        resize_keyboard: true,
-      },
-    });
+    // console.log(ctx)
+    await ctx.reply("Xush kelibsiz ustoz! Amallarni tanlang 👇",
+      Markup.keyboard([
+        [{text:"➕ Dars qo'shish"}],
+        [{text:"📚 Darslar"} ],
+      ]).resize(),
+    );
   }
 
   async showStudentMenu(ctx: BotContext) {
@@ -84,6 +82,8 @@ export class BotService {
 
   async checkChannelMembership(userId: number): Promise<boolean> {
     try {
+      console.log('shu yer ishladi bot service checkChannelMembers');
+
       const member = await this.bot.telegram.getChatMember(TELEGRAM_CHANNEL_ID, userId);
       return member.status !== 'left' && member.status !== 'kicked';
     } catch (error) {

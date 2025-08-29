@@ -6,7 +6,7 @@ import { session } from 'telegraf';
 
 import { AppService } from './app.service';
 import { LessonModule } from './modules/lesson/lesson.module';
-// import { UserModule } from './modules/user/user.module';
+import { UserModule } from './modules/user/user.module';
 import { BotModule } from './modules/bot/bot.module';
 import { APP_GUARD } from '@nestjs/core';
 import { AdminGuard } from './common/guard/admin.guard';
@@ -54,14 +54,14 @@ import { AdminGuard } from './common/guard/admin.guard';
     // 📦 Feature modules
     BotModule,
     LessonModule,
-    // UserModule,
+    UserModule,
   ],
   providers: [
-    // {
-    //   provide: APP_GUARD,
-    //   useClass: AdminGuard
-    // },
-    // AppService
+    {
+      provide: APP_GUARD,
+      useClass: AdminGuard
+    },
+    AppService
   ],
 })
 export class AppModule { }
