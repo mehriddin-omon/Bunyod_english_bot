@@ -5,7 +5,7 @@ import {
 } from 'nestjs-telegraf';
 import { Markup } from 'telegraf';
 import { LessonService } from './lesson.service';
-import type { BotContext } from '../bot/bot.context';
+import type { BotContext } from '../../common/interface/bot.context';
 import { ResourceType } from 'src/common/utils/enum';
 import { log } from 'console';
 

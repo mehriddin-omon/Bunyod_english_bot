@@ -6,9 +6,9 @@ import {
   Update,
 } from 'nestjs-telegraf';
 import { Markup } from 'telegraf';
-import { LessonService } from './lesson.service'; 
+import { LessonService } from './lesson.service';
 import { AdminGuard } from 'src/common/guard/admin.guard';
-import type { BotContext } from '../bot/bot.context';
+import type { BotContext } from '../../common/interface/bot.context';
 import { ResourceType } from 'src/common/utils/enum';
 import { SAVED_TELEGRAM_CHANNEL_ID } from 'src/common/utils/const';
 import { UseGuards } from '@nestjs/common';
@@ -26,28 +26,33 @@ export class LessonCreateCommand {
     await this.showLessonMenu(ctx);
   }
 
-  @Action("add_title") async addTitle(@Ctx() ctx: BotContext) {
+  @Action("add_title")
+  async addTitle(@Ctx() ctx: BotContext) {
     return this.awaitField(ctx, "title", "📌 Dars nomini yuboring:");
   }
 
-  @Action("add_listening") async addListening(@Ctx() ctx: BotContext) {
+  @Action("add_listening")
+  async addListening(@Ctx() ctx: BotContext) {
     return this.awaitField(ctx, "listening", "🎧 Audio fayl yuboring:");
   }
 
-  @Action("add_reading") async addReading(@Ctx() ctx: BotContext) {
+  @Action("add_reading")
+  async addReading(@Ctx() ctx: BotContext) {
     return this.awaitField(ctx, "reading", "📖 Reading materialini fayl ko'rinishida yuboring:");
   }
 
-  @Action("add_test") async addTest(@Ctx() ctx: BotContext) {
+  @Action("add_test")
+  async addTest(@Ctx() ctx: BotContext) {
     return this.awaitField(ctx, "test", "📝 Test fayl yoki matn yuboring:");
   }
 
-  @Action("add_homework") async addHomework(@Ctx() ctx: BotContext) {
-    return this.awaitField(ctx, "homework", "📚 Uy vazifasini fayl ko'rinishida yuboring:");
+  @Action("add_word_list")
+  async addword_list(@Ctx() ctx: BotContext) {
+    return this.awaitField(ctx, "word_list", "📚 Uy vazifasini fayl ko'rinishida yuboring:");
   }
 
   @On("text")
-  async handleText(@Ctx() ctx: BotContext) {1    
+  async handleText(@Ctx() ctx: BotContext) {
     const field = ctx.session?.awaiting;
     if (!field || !ctx.message || !('text' in ctx.message)) return;
 
@@ -145,7 +150,11 @@ export class LessonCreateCommand {
 
   private initSession(ctx: BotContext) {
     if (!ctx.session) {
-      ctx.session = { data: {}, awaiting: null, lessonId: null };
+      ctx.session = {
+        data: {},
+        awaiting: null,
+        lessonId: null
+      };
     }
     if (!ctx.session.data) {
       ctx.session.data = {};
@@ -209,19 +218,19 @@ export class LessonCreateCommand {
     status += `🎧 Listening: ${data.listening ? '✅ Qo\'shilgan' : '❌ Yo\'q'}\n`;
     status += `📖 Reading: ${data.reading ? '✅ Qo\'shilgan' : '❌ Yo\'q'}\n`;
     status += `📝 Test: ${data.test ? '✅ Qo\'shilgan' : '❌ Yo\'q'}\n`;
-    status += `📚 Homework: ${data.homework ? '✅ Qo\'shilgan' : '❌ Yo\'q'}`;
+    status += `📚 word_list: ${data.word_list ? '✅ Qo\'shilgan' : '❌ Yo\'q'}`;
 
     await ctx.reply(
       status,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("📌 Dars nomi", "add_title")],
+      Markup.keyboard([
+        [Markup.button.callback("📌 Lesson name", "add_title")],
         [
           Markup.button.callback("📖 Reading", "add_reading"),
           Markup.button.callback("🎧 Listening", "add_listening")
         ],
         [
           Markup.button.callback("📝 Test", "add_test"),
-          Markup.button.callback("📚 Homework", "add_homework")
+          Markup.button.callback("📚 Word List", "add_word_list")
         ],
         [
           Markup.button.callback("❌ Bekor qilish", "cancel_lesson"),

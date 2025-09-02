@@ -1,5 +1,5 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne } from 'typeorm';
-import { Lesson } from './lesson.entity';
+import { Lesson } from '../lesson/entity/lesson.entity';
 import { ResourceType } from 'src/common/utils/enum';
 
 @Entity({ name: 'lesson_resources' })

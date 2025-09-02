@@ -1,6 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { LessonService } from './lesson.service';
-import { Lesson } from '../entitys/lesson.entity';
+import { Lesson } from './entity/lesson.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Test } from '../entitys/test.entity';
 import { LessonResource } from '../entitys/lesson-resource.entity';

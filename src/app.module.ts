@@ -10,6 +10,10 @@ import { UserModule } from './modules/user/user.module';
 import { BotModule } from './modules/bot/bot.module';
 import { APP_GUARD } from '@nestjs/core';
 import { AdminGuard } from './common/guard/admin.guard';
+import { ListeningModule } from './modules/listening/listening.module';
+import { ReadingModule } from './modules/reading/reading.module';
+import { TestsModule } from './modules/tests/tests.module';
+import { WordlistModule } from './modules/wordlist/wordlist.module';
 
 @Module({
   imports: [
@@ -55,6 +59,10 @@ import { AdminGuard } from './common/guard/admin.guard';
     BotModule,
     LessonModule,
     UserModule,
+    ListeningModule,
+    ReadingModule,
+    TestsModule,
+    WordlistModule,
   ],
   providers: [
     {

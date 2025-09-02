@@ -4,7 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { UserService } from 'src/modules/user/user.service';
 import { CHANNEL_URL, TELEGRAM_CHANNEL_ID } from 'src/common/utils/const';
-import { BotContext } from './bot.context';
+import { BotContext } from '../../common/interface/bot.context';
 
 @Injectable()
 export class BotService {
@@ -53,7 +53,6 @@ export class BotService {
         },
       });
     }
-    // check_membership
     // await this.userService.createOrUpdateFromTelegram(ctx.from);
     const role = await this.userService.getRole(userId);
     return role === 'admin' ? this.showTeacherMenu(ctx) : this.showStudentMenu(ctx);

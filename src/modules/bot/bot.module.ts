@@ -8,7 +8,7 @@ import { ChannelGuard } from 'src/common/guard/channel.guard';
 import { LessonModule } from 'src/modules/lesson/lesson.module';
 import { UserModule } from 'src/modules/user/user.module';
 import { User } from 'src/modules/entitys/user.entity';
-import { Lesson } from 'src/modules/entitys/lesson.entity';
+import { Lesson } from 'src/modules/lesson/entity/lesson.entity';
 import { LessonCreateCommand } from '../lesson/lesson-create.command';
 import { LessonViewCommand } from '../lesson/lesson-view.command';
 
