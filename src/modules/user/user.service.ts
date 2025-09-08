@@ -3,7 +3,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from '../entitys/user.entity';
+import { User } from '../../common/core/entitys/user.entity';
 import { TEACHER_ID } from 'src/common/utils/const';
 
 @Injectable()

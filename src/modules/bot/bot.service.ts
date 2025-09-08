@@ -4,7 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { UserService } from 'src/modules/user/user.service';
 import { CHANNEL_URL, TELEGRAM_CHANNEL_ID } from 'src/common/utils/const';
-import { BotContext } from '../../common/interface/bot.context';
+import { BotContext } from '../../common/utils/bot.context';
 
 @Injectable()
 export class BotService {

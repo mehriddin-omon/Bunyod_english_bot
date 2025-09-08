@@ -1,5 +1,4 @@
 import { Entity, Column, OneToMany } from 'typeorm';
-import { LessonResource } from '../../entitys/lesson-resource.entity';
 import { BaseEntity } from 'src/common/core/baseEntity';
 import { LessonStatus } from 'src/common/utils/enum';
 import { Listening } from 'src/modules/listening';
@@ -25,7 +24,7 @@ export class Lesson extends BaseEntity {
   status: LessonStatus;
  
   @OneToMany(() => Listening, (listening) => listening.lesson)
-  listenings: Listening[];
+  listening: Listening[];
 
   @OneToMany(() => Reading, (reading) => reading.lesson)
   readings: Reading[];
@@ -35,5 +34,4 @@ export class Lesson extends BaseEntity {
 
   @OneToMany(() => Test, (test) => test.lesson)
   tests: Test[];
-
 }

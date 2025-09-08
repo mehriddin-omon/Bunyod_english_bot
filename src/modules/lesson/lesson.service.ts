@@ -1,70 +1,59 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-
 import { Lesson } from './entity/lesson.entity';
-import { LessonResource } from '../entitys/lesson-resource.entity';
-import { ResourceType } from 'src/common/utils/enum';
 
 @Injectable()
 export class LessonService {
   constructor(
     @InjectRepository(Lesson)
-    private lessonRepo: Repository<Lesson>,
-    @InjectRepository(LessonResource)
-    private resourceRepo: Repository<LessonResource>,
-  ) {}
+    private readonly lessonRepo: Repository<Lesson>,
+  ) { }
 
-  async createLesson(title: string): Promise<Lesson> {
-    const lesson = this.lessonRepo.create({ title });
+  /**
+   * Yangi dars yaratish
+   */
+  async createLesson(lesson_name: string): Promise<Lesson> {
+    const lesson = this.lessonRepo.create({ lesson_name });
     return this.lessonRepo.save(lesson);
   }
 
-  async addLessonFile(data: {
-    lessonId: number;
-    channelId: number;
-    messageId: number;
-    fileType: ResourceType;
-  }): Promise<LessonResource> {
-    const lesson = await this.lessonRepo.findOneBy({ id: data.lessonId });
-    if (!lesson) throw new Error('Lesson not found');
-
-    const resource = this.resourceRepo.create({
-      lesson,
-      type: data.fileType,
-      channelId: data.channelId,
-      messageId: data.messageId
-    });
-    
-    return this.resourceRepo.save(resource);
-  }
-
+  /**
+   * Barcha darslarni olish
+   */
   async getAllLessons(): Promise<Lesson[]> {
     return this.lessonRepo.find({
-      order: { id: 'DESC' } // eng yangi darslar birinchi
+      order: { created_at: 'DESC' },
     });
   }
 
-  async getLessonWithResources(lessonId: number): Promise<Lesson | null> {
+  /**
+   * Darsni ID bo‘yicha olish (resourcelarsiz)
+   */
+  async getLessonById(id: string): Promise<Lesson | null> {
+    return this.lessonRepo.findOne({ where: { id } });
+  }
+
+  /**
+   * Darsni barcha resurslari bilan olish (agar kerak bo‘lsa)
+   * Eslatma: relations faqat kerakli bo‘lsa qo‘shiladi
+   */
+  async getLessonWithRelations(id: string): Promise<Lesson | null> {
     return this.lessonRepo.findOne({
-      where: { id: lessonId },
-      relations: ['resources']
+      where: { id },
+      relations: ['listenings', 'readings', 'tests', 'wordList'],
     });
   }
 
-  async getResourceByLessonId(lessonId: number, type: ResourceType): Promise<LessonResource | null> {
-    return this.resourceRepo.findOne({
-      where: { lesson: { id: lessonId }, type },
-      relations: ['lesson']
-    });
-  }
-
-  async deleteLessonById(lessonId: number): Promise<boolean> {
+  /**
+   * Darsni o‘chirish
+   */
+  async deleteLessonById(id: string): Promise<boolean> {
     try {
-      const result = await this.lessonRepo.delete(lessonId);
+      const result = await this.lessonRepo.delete(id);
       return result.affected ? result.affected > 0 : false;
     } catch (error) {
-      console.error('Darsni o\'chirishda xatolik:', error);
+      console.error("❌ Darsni o‘chirishda xatolik:", error);
       return false;
     }
   }

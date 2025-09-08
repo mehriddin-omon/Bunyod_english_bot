@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ListeningService } from './listening.service';
-import { ListeningController } from './listening.controller';
+import { ListeningHandler } from './listenining.handler';
 
 @Module({
-  controllers: [ListeningController],
-  providers: [ListeningService],
+  controllers: [],
+  providers: [ListeningService, ListeningHandler],
 })
 export class ListeningModule {}

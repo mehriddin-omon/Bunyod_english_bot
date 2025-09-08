@@ -2,8 +2,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { LessonService } from './lesson.service';
 import { Lesson } from './entity/lesson.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Test } from '../entitys/test.entity';
-import { LessonResource } from '../entitys/lesson-resource.entity';
+// import { Test } from '../../common/core/entitys/test.entity';
 import { LessonCreateCommand } from './lesson-create.command';
 import { BotModule } from '../bot/bot.module';
 import { UserModule } from '../user/user.module';
@@ -13,7 +12,7 @@ import { UserModule } from '../user/user.module';
     BotModule,
     UserModule,
     // forwardRef(() => BotModule),
-    TypeOrmModule.forFeature([Lesson, LessonResource, Test])
+    TypeOrmModule.forFeature([Lesson])
   ],
   providers: [LessonService, LessonCreateCommand],
   exports: [LessonService, LessonCreateCommand]

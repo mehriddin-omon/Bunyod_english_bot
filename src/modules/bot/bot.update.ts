@@ -1,5 +1,5 @@
 import { Ctx, Start, Action, Update } from 'nestjs-telegraf';
-import type { BotContext } from '../../common/interface/bot.context';
+import type { BotContext } from '../../common/utils/bot.context';
 import { BotService } from './bot.service';
 
 @Update()
