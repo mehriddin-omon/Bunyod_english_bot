@@ -5,5 +5,6 @@ import { ListeningHandler } from './listenining.handler';
 @Module({
   controllers: [],
   providers: [ListeningService, ListeningHandler],
+  exports:[ListeningHandler, ListeningService]
 })
 export class ListeningModule {}

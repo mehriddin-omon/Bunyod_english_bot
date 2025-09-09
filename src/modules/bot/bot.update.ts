@@ -13,8 +13,6 @@ export class BotUpdate {
 
   @Action('check_membership')
   async checkMembership(@Ctx() ctx: BotContext) {
-    console.log('object chiqadi');
-    
     return this.botService.confirmMembership(ctx);
   }
 }

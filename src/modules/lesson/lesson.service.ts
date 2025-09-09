@@ -29,7 +29,7 @@ export class LessonService {
 
   /**
    * Darsni ID bo‘yicha olish (resourcelarsiz)
-   */
+  */
   async getLessonById(id: string): Promise<Lesson | null> {
     return this.lessonRepo.findOne({ where: { id } });
   }
@@ -41,7 +41,7 @@ export class LessonService {
   async getLessonWithRelations(id: string): Promise<Lesson | null> {
     return this.lessonRepo.findOne({
       where: { id },
-      relations: ['listenings', 'readings', 'tests', 'wordList'],
+      relations: ['listening', 'reading', 'test', 'word_list'],
     });
   }
 

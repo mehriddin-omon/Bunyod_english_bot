@@ -4,7 +4,6 @@ import { Message } from 'telegraf/types';
 @Injectable()
 export class ListeningService {
 
-  
   extractAudioData(message: Message, sentMessageId: number) {
     if ('audio' in message) {
       return {

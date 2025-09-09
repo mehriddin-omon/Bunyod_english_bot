@@ -44,9 +44,9 @@ export class ListeningHandler {
         message.message_id
       );
 
-      const fileData = this.listeningService.extractAudioData(message, sentMessage.message_id);
+      // const fileData = this.listeningService.extractAudioData(message, sentMessage.message_id);
 
-      pushResource(ctx, 'listening', fileData);
+      // pushResource(ctx, 'listening', fileData);
 
       initSession(ctx);
       assertSession(ctx)

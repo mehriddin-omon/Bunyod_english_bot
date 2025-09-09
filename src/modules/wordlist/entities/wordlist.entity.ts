@@ -2,7 +2,7 @@ import { BaseEntity } from "src/common/core/baseEntity";
 import { Lesson } from "src/modules/lesson";
 import { Column, Entity, ManyToOne } from "typeorm";
 
-@Entity("wordlist")
+@Entity("word_list")
 export class WordList extends BaseEntity {
   @Column()
   english: string;

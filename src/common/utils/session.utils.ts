@@ -1,32 +1,36 @@
 import { BotContext, LessonField, SessionData } from "./bot.context";
 
 export function initSession(ctx: BotContext) {
-    if (!ctx.session) {
-        ctx.session = {
-            data: {},
-            awaiting: null,
-            lessonId: null
-        }
-    }
+  if (!ctx.session) {
+    ctx.session = {
+      data: {},
+      awaiting: null,
+      lessonId: null,
+      currentLessonId:null,
+    };
+  }
+  if (!ctx.session.data) {
+    ctx.session.data = {};
+  }
 }
 export function assertSession(ctx: BotContext): asserts ctx is BotContext & { session: SessionData } {
-    if (!ctx.session) throw new Error("Session not initialized");
+  if (!ctx.session) throw new Error("Session not initialized");
 }
 
 export function setAwaiting(ctx: BotContext, field: keyof SessionData['data']) {
-    initSession(ctx);
-    assertSession(ctx);
-    ctx.session.awaiting = field;
+  initSession(ctx);
+  assertSession(ctx);
+  ctx.session.awaiting = field;
 }
 
 export function clearSession(ctx: BotContext) {
-    ctx.session = {
-        data: {},
-        awaiting: null,
-        lessonId: null,
-        currentLessonId: null,
-        // lessons: [],
-    }
+  ctx.session = {
+    data: {},
+    awaiting: null,
+    lessonId: null,
+    currentLessonId: null,
+    // lessons: [],
+  }
 }
 
 export function pushResource(
@@ -36,11 +40,6 @@ export function pushResource(
 ) {
   initSession(ctx);       // session yo‘q bo‘lsa, yaratadi
   assertSession(ctx);     // TypeScriptga session borligini bildiradi
-
-  // data maydoni yo‘q bo‘lsa, yaratamiz
-  if (!ctx.session.data) {
-    ctx.session.data = {};
-  }
 
   // Array maydoni yo‘q bo‘lsa, yaratamiz
   if (!ctx.session.data[field]) {
