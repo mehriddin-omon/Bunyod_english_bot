@@ -2,6 +2,7 @@ import { UseGuards } from '@nestjs/common';
 import { Action, Ctx, Hears, On, Update } from 'nestjs-telegraf';
 import { AdminGuard } from 'src/common/guard/admin.guard';
 import type { BotContext } from 'src/common/utils/bot.context';
+import { SAVED_TELEGRAM_CHANNEL_ID } from 'src/common/utils/const';
 import {
   assertSession,
   clearSession,
@@ -34,81 +35,80 @@ export class LessonCreateCommand {
 
   @Hears("💾 Saqlash")
   async saveLesson(@Ctx() ctx: BotContext) {
-    initSession(ctx)
+    initSession(ctx);
     assertSession(ctx);
+
     const data = ctx.session.data;
+    const chatId = ctx.chat?.id;
 
     if (!data.lesson_name?.content) {
       return ctx.reply("❌ Dars nomi kiritilmagan.");
     }
 
-    const lessonPayload = {
-      name: data.lesson_name.content,
-      listening: data.listening ?? [],
-      reading: data.reading ?? [],
-      test: data.test ?? [],
-      word_list: data.word_list ?? [],
-    };
+    try {
+      // 🔁 Har bir listening faylni channelga nusxalash
+      if (data.listening?.length) {
+        for (const file of data.listening) {
+          if (typeof file.fileId === 'string') {
+            const sent = await ctx.telegram.sendVoice(
+              SAVED_TELEGRAM_CHANNEL_ID,
+              file.fileId,
+              {
+                caption: `🎧 ${data.lesson_name.content} — Listening`,
+              }
+            );
+            file.channelMessageId = sent.message_id; // 🔐 endi channelda bor
+          }
+        }
+      }
 
-    // TODO: await this.lessonService.createLesson(lessonPayload);
-    console.log(" 53-qator lesson createcommand Bazaga saqlanayotgan dars:", lessonPayload);
+      // TODO: Bazaga saqlash (data ni to‘liq)
+      console.log("Saqlanayotgan dars:", data);
 
-    clearSession(ctx);
-    await ctx.reply("✅ Dars muvaffaqiyatli saqlandi.");
+      clearSession(ctx);
+      await ctx.reply("✅ Dars va fayllar muvaffaqiyatli saqlandi.");
+    } catch (error) {
+      console.error("Saqlashda xatolik:", error);
+      await ctx.reply("❌ Saqlashda xatolik yuz berdi.");
+    }
   }
 
   @Hears("🎧 Listening")
   async awaitingListening(@Ctx() ctx: BotContext) {
+    initSession(ctx);
     setAwaiting(ctx, 'listening');
-    await ctx.reply(
-      "🎧 Audio fayl yuboring yoki ➕ tugmasini bosing:",
-      Markup.inlineKeyboard(
-        // ["➕ Qo‘shish"],
-        [
-          Markup.button.callback("Saqlash", 'cache_listens'), 
-          // "❌ Bekor qilish"
-        ],
-        // ["Asosiy menu", "Orqaga"],
-      )
-    );
+    await ctx.reply("🎧 Audio fayl yuboring");
   }
 
-  @Action('cache_listens')
-  async cache_listens(@Ctx() ctx: BotContext){
+  @On('text')
+  async handleText(@Ctx() ctx: BotContext) {
+    console.log('text qabul qilindi', ctx);
 
-    console.log('salom');
-    
+    assertSession(ctx);
+    const awaiting = ctx.session.awaiting;
+    const text =
+      ctx.message &&
+        'text' in ctx.message &&
+        typeof ctx.message.text === 'string'
+        ? ctx.message.text
+        : undefined;
+
+    if (!text || !awaiting) return;
+
+    if (!ctx.session.data) {
+      ctx.session.data = {};
+    }
+
+    if (awaiting === 'lesson_name') {
+      ctx.session.data.lesson_name = {
+        type: 'text',
+        content: text,
+      };
+      ctx.session.awaiting = null;
+      await ctx.reply(`📌 Dars nomi saqlandi: ${text}`);
+      await this.showLessonMenu(ctx);
+    }
   }
-
-  // @On('text')
-  // async handleText(@Ctx() ctx: BotContext) {
-  //   console.log('text kelyapti', ctx);
-
-  //   assertSession(ctx);
-  //   const awaiting = ctx.session.awaiting;
-  //   const text =
-  //     ctx.message &&
-  //       'text' in ctx.message &&
-  //       typeof ctx.message.text === 'string'
-  //       ? ctx.message.text
-  //       : undefined;
-
-  //   if (!text || !awaiting) return;
-
-  //   if (!ctx.session.data) {
-  //     ctx.session.data = {};
-  //   }
-
-  //   if (awaiting === 'lesson_name') {
-  //     ctx.session.data.lesson_name = {
-  //       type: 'text',
-  //       content: text,
-  //     };
-  //     ctx.session.awaiting = null;
-  //     await ctx.reply(`📌 Dars nomi saqlandi: ${text}`);
-  //     await this.showLessonMenu(ctx);
-  //   }
-  // }
 
   @On('message')
   async handleIncomingFile(@Ctx() ctx: BotContext) {
@@ -122,7 +122,6 @@ export class LessonCreateCommand {
     const forwardedMessageId = 'forward_from_message_id' in message
       ? (message as any).forward_from_message_id
       : message.message_id;
-
 
     // Fayl turini aniqlash
     let fileData: any = null;
@@ -158,7 +157,7 @@ export class LessonCreateCommand {
       `📚 WordList: ${data.word_list?.length || 0} ta`,
       Markup.keyboard([
         ["📌 Dars nomi"],
-        [{ text: "🎧 Listening" }, "📖 Reading"],
+        ["🎧 Listening", "📖 Reading"],
         ["📝 Test", "📚 WordList"],
         ["💾 Saqlash", "❌ Bekor qilish"],
       ]).resize()

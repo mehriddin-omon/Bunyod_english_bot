@@ -6,7 +6,6 @@ import { LessonCreateCommand } from './lesson-create.command';
 import { BotModule } from '../bot/bot.module';
 import { UserModule } from '../user/user.module';
 import { ListeningModule } from '../listening';
-import { ListeningHandler } from '../listening/listenining.handler';
 
 @Module({
   imports: [
@@ -17,7 +16,6 @@ import { ListeningHandler } from '../listening/listenining.handler';
     TypeOrmModule.forFeature([Lesson])
   ],
   providers: [
-    ListeningHandler,
     LessonService, 
     LessonCreateCommand, 
   ],
