@@ -1,3 +1,4 @@
+import { Lesson } from 'src/modules';
 import type { Context } from 'telegraf';
 export type LessonFileType = 'text' | 'document' | 'audio' | 'photo' | 'video' | 'voice' | 'unknown';
 
@@ -21,7 +22,7 @@ export interface SessionData {
   awaiting?: keyof SessionData['data'] | null;
   lessonId?: string | null;
   currentLessonId?: string | null;
-  // lessons?: Lesson[];
+  lessons?: Lesson[];
 }
 
 export interface BotContext extends Context {

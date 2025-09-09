@@ -1,136 +1,157 @@
-// import {
-//   Ctx,
-//   Hears,
-//   Update,
-// } from 'nestjs-telegraf';
-// import { Markup } from 'telegraf';
-// import { LessonService } from './lesson.service';
-// import type { BotContext } from '../../common/utils/bot.context';
-// import { ResourceType } from 'src/common/utils/enum';
-// import { log } from 'console';
+import { Ctx, Hears, Update } from 'nestjs-telegraf';
+import { Markup } from 'telegraf';
+import { LessonService } from './lesson.service';
+import type { BotContext } from 'src/common/utils/bot.context';
+import { ResourceType } from 'src/common/utils/enum';
+import { initSession } from 'src/common/utils/session.utils';
+import { SAVED_TELEGRAM_CHANNEL_ID } from 'src/common/utils/const';
 
-// @Update()
-// export class LessonViewCommand {
-//   constructor(private readonly lessonService: LessonService) { }
+@Update()
+export class LessonViewCommand {
+    constructor(private readonly lessonService: LessonService) { }
 
-//   @Hears("📚 Darslar")
-//   async showLessons(@Ctx() ctx: BotContext) {
-//     const lessons = await this.lessonService.getAllLessons();
-//     if (lessons.length === 0) {
-//       return ctx.reply("📚 Hali darslar mavjud emas.");
-//     }
+    @Hears("📚 Darslar")
+    async showLessons(@Ctx() ctx: BotContext) {
+        const lessons = await this.lessonService.getAllLessons();
+        if (!lessons.length) {
+            return ctx.reply("📚 Hali darslar mavjud emas.");
+        }
 
-//     const keyboard = lessons.map((lesson, index) => {
-//       const unitNumber = index + 1;
-//       return [`📗 Unit ${unitNumber}`];
-//     });
+        const keyboard = lessons.map((lesson, index) => [`📗 Unit ${index + 1}`]);
+        keyboard.push(["⬅️ Asosiy menyu"]);
 
-//     keyboard.push(["⬅️ Asosiy menyu"]);
-//     ctx.session ??= {}
-//     ctx.session.lessons = lessons;
+        ctx.session ??= {
+            data: {},
+            awaiting: null,
+            currentLessonId: null,
+            lessons: [],
+        };
+        ctx.session.lessons = lessons;
 
-//     await ctx.reply("📚 Mavjud darslar:",
-//       Markup.keyboard(keyboard).resize()
-//     );
-//   }
+        await ctx.reply("📚 Mavjud darslar:", Markup.keyboard(keyboard).resize());
+    }
 
-//   @Hears(/^📗 Unit (\d+)$/)
-// async selectLesson(@Ctx() ctx: BotContext) {
-//   if (!ctx.match || !ctx.match[1]) {
-//     await ctx.reply('Unit raqami topilmadi.');
-//     return;
-//   }
+    @Hears(/^📗 Unit (\d+)$/)
+    async selectLesson(@Ctx() ctx: BotContext) {
+        const unitNumber = parseInt(ctx.match?.[1] ?? '', 10);
+        if (isNaN(unitNumber)) {
+            return ctx.reply("❌ Unit raqami noto‘g‘ri.");
+        }
 
-//   const unitNumber = parseInt(ctx.match[1], 10);
-//   ctx.session ??= {};
+        initSession(ctx);
+        const lessons = ctx.session?.lessons ?? await this.lessonService.getAllLessons();
+        const baseLesson = lessons[unitNumber - 1];
 
-//   const lessons = ctx.session.lessons ?? await this.lessonService.getAllLessons();
-//   const baseLesson = lessons[unitNumber - 1];
+        if (!baseLesson) {
+            return ctx.reply("❌ Dars topilmadi.");
+        }
 
-//   if (!baseLesson) return ctx.reply("❌ Dars topilmadi.");
+        const lesson = await this.lessonService.getLessonWithRelations(baseLesson.id);
+        if (!lesson) {
+            return ctx.reply("❌ Dars topilmadi.");
+        }
 
-//   const lesson = await this.lessonService.getLessonWithResources(baseLesson.id);
-//   if (!lesson) return ctx.reply("❌ Dars topilmadi.");
+        ctx.session!.currentLessonId = lesson.id;
 
-//   ctx.session.currentLessonId = lesson.id;
+        let message = `📖 ${lesson.lesson_name}\n\n`;
+        const keyboard: string[][] = [];
 
-//   let message = `📖 ${lesson.title}\n\n`;
-//   if (lesson.resources?.length) {
-//     message += "📎 Materiallar:\n";
-//     for (const resource of lesson.resources) {
-//       message += `${this.getResourceEmoji(resource.type)} ${resource.type}\n`;
-//     }
-// console.log(lesson);
+        const sections = [
+            { label: "🎧 Listening", data: lesson.listening },
+            { label: "📖 Reading", data: lesson.readings },
+            { label: "📝 Test", data: lesson.tests },
+            { label: "📚 WordList", data: lesson.wordList },
+        ];
 
-//     const keyboard = lesson.resources.map(resource => {
-//       return [`${this.getResourceEmoji(resource.type)} ${resource.type}`];
-//     });
+        const availableSections = sections.filter(section => section.data?.length);
 
-//     keyboard.push(["🔙 Orqaga"]);
+        if (availableSections.length) {
+            message += "📎 Materiallar:\n";
+            for (const section of availableSections) {
+                message += `${section.label} (${section.data.length} ta)\n`;
+                keyboard.push([section.label]);
+            }
+        } else {
+            message += "❌ Bu darsda materiallar mavjud emas.";
+        }
 
-//     await ctx.reply(message, Markup.keyboard(keyboard).resize());
-//   } else {
-//     await ctx.reply(message + "❌ Bu darsda materiallar mavjud emas.", 
-//       Markup.keyboard([["🔙 Orqaga"]]).resize());
-//   }
-// }
+        keyboard.push(["🔙 Orqaga"]);
 
-//   @Hears(/^🎧 AUDIO$|^📄 PDF$|^📋 DOCUMENT$|^📎 .*$/)
-//   async sendLessonResource(@Ctx() ctx: BotContext) {
-//     ctx.session ??= {}
-//     const lessonId = ctx.session.currentLessonId;
-//     if (!lessonId) return ctx.reply("❌ Dars tanlanmagan.");
+        await ctx.reply(message, Markup.keyboard(keyboard).resize());
+    }
 
-//     let typeText = '';
-//     if (ctx.message && 'text' in ctx.message) {
-//       typeText = ctx.message.text.trim();
-//     }
+    @Hears(/^🎧 Listening$|^📖 Reading$|^📝 Test$|^📚 WordList$/)
+    async sendLessonResource(@Ctx() ctx: BotContext) {
+        initSession(ctx);
+        const lessonId = ctx.session?.currentLessonId;
+        if (!lessonId) return ctx.reply("❌ Dars tanlanmagan.");
 
-//     const type = this.getResourceTypeFromText(typeText);
-//     if (!type) return ctx.reply("❌ Noto‘g‘ri material turi.");
+        const typeText =
+            ctx.message && 'text' in ctx.message && typeof ctx.message.text === 'string'
+                ? ctx.message.text.trim()
+                : '';
 
-//     const resource = await this.lessonService.getResourceByLessonId(lessonId, type);
-//     if (!resource) return ctx.reply(`❌ ${type} materiali mavjud emas.`);
+        const sectionMap = {
+            "🎧 Listening": "listening",
+            "📖 Reading": "readings",
+            "📝 Test": "tests",
+            "📚 WordList": "wordList",
+        } as const;
 
-//     try {
-//       await ctx.telegram.copyMessage(
-//         ctx.chat!.id,
-//         resource.channelId,
-//         resource.messageId
-//       );
-//     } catch (error) {
-//       console.error(`Resurs yuborishda xatolik (${resource.id}):`, error);
-//       await ctx.reply(`❌ ${type} materiali yuborilmadi.`);
-//     }
-//   }
+        const relationKey = sectionMap[typeText as keyof typeof sectionMap];
+        if (!relationKey) return ctx.reply("❌ Noto‘g‘ri material turi.");
 
-//   @Hears("🔙 Orqaga")
-//   async backToLessons(@Ctx() ctx: BotContext) {
-//     return this.showLessons(ctx);
-//   }
+        const lesson = await this.lessonService.getLessonWithRelations(lessonId);
+        const resources = lesson?.[relationKey];
 
-//   @Hears("⬅️ Asosiy menyu")
-//   async backToMain(@Ctx() ctx: BotContext) {
-//     await ctx.reply("🏠 Asosiy menyu:", Markup.keyboard([
-//       ["📚 Darslar"],
-//       ["ℹ️ Yordam"]
-//     ]).resize()
-//     );
-//   }
+        if (!resources || !Array.isArray(resources) || resources.length === 0) {
+            return ctx.reply(`❌ ${typeText} materiali mavjud emas.`);
+        }
 
-//   private getResourceEmoji(type: ResourceType): string {
-//     switch (type) {
-//       case ResourceType.AUDIO: return "🎧";
-//       case ResourceType.PDF: return "📄";
-//       case ResourceType.DOCUMENT: return "📋";
-//       default: return "📎";
-//     }
-//   }
+        for (const item of resources) {
+            if (typeof item.message_id === 'string') {
+                try {
+                    await ctx.telegram.copyMessage(
+                        ctx.chat!.id,
+                        SAVED_TELEGRAM_CHANNEL_ID,
+                        parseInt(item.message_id, 10)
+                    );
+                } catch (error) {
+                    console.error(`❌ Fayl yuborishda xatolik (${item.id}):`, error);
+                }
+            } else {
+                console.warn(`⚠️ Fayl channelga saqlanmagan (${item.id})`);
+            }
+        }
+    }
 
-//   private getResourceTypeFromText(text: string): ResourceType | null {
-//     if (text.includes("AUDIO")) return ResourceType.AUDIO;
-//     if (text.includes("PDF")) return ResourceType.PDF;
-//     if (text.includes("DOCUMENT")) return ResourceType.DOCUMENT;
-//     return null;
-//   }
-// }
+    @Hears("🔙 Orqaga")
+    async backToLessons(@Ctx() ctx: BotContext) {
+        return this.showLessons(ctx);
+    }
+
+    @Hears("⬅️ Asosiy menyu")
+    async backToMain(@Ctx() ctx: BotContext) {
+        await ctx.reply("🏠 Asosiy menyu:", Markup.keyboard([
+            ["📚 Darslar"],
+            ["ℹ️ Yordam"]
+        ]).resize());
+    }
+
+    private getResourceEmoji(type: ResourceType): string {
+        switch (type) {
+            case ResourceType.AUDIO: return "🎧";
+            case ResourceType.PDF: return "📄";
+            case ResourceType.DOCUMENT: return "📋";
+            default: return "📎";
+        }
+    }
+
+    private getResourceTypeFromText(text: string): ResourceType | null {
+        const normalized = text.toUpperCase().trim();
+        if (normalized.includes("AUDIO")) return ResourceType.AUDIO;
+        if (normalized.includes("PDF")) return ResourceType.PDF;
+        if (normalized.includes("DOCUMENT")) return ResourceType.DOCUMENT;
+        return null;
+    }
+}

@@ -3,7 +3,7 @@ import { Markup, Telegraf } from 'telegraf';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { UserService } from 'src/modules/user/user.service';
-import { CHANNEL_URL, TELEGRAM_CHANNEL_ID } from 'src/common/utils/const';
+import { CHANNEL_URL, TELEGRAM_CHANNEL_ID, TEACHER_ID } from 'src/common/utils/const';
 import { BotContext } from '../../common/utils/bot.context';
 
 @Injectable()
@@ -13,76 +13,98 @@ export class BotService {
   constructor(
     @InjectBot() private readonly bot: Telegraf<BotContext>,
     private readonly userService: UserService,
-  ) { }
+  ) {}
 
   async sendStartMessage(ctx: BotContext) {
     const userId = ctx.from?.id;
-    if (!userId) return ctx.reply('Foydalanuvchi topilmadi');
+    if (!userId) return ctx.reply('❌ Foydalanuvchi aniqlanmadi.');
 
     const isMember = await this.checkChannelMembership(userId);
     if (!isMember) {
-      return ctx.reply(
-        "Assalomu alaykum! Botdan foydalanish uchun kanalga qo'shiling 👇",
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "📢 Kanalga qo'shilish", url: CHANNEL_URL }],
-              [{ text: "✅ Tasdiqlash", callback_data: 'check_membership' }],
-            ],
-          },
-        },
-      );
+      return this.askToJoinChannel(ctx);
     }
 
     await this.userService.createOrUpdateFromTelegram(ctx.from);
-    const role = await this.userService.getRole(userId);
-    return role === 'admin' ? this.showTeacherMenu(ctx) : this.showStudentMenu(ctx);
+    const role = await this.resolveUserRole(userId);
+
+    return this.showMenuByRole(ctx, role);
   }
 
   async confirmMembership(ctx: BotContext) {
     const userId = ctx.from?.id;
-    if (!userId) return ctx.reply('Foydalanuvchi topilmadi');
+    if (!userId) return ctx.reply('❌ Foydalanuvchi aniqlanmadi.');
 
     const isMember = await this.checkChannelMembership(userId);
     if (!isMember) {
       return ctx.reply("❌ Siz hali kanalga a'zo bo'lmadingiz.", {
         reply_markup: {
-          inline_keyboard: [
-            [{ text: "📢 Kanalga qo'shilish", url: CHANNEL_URL }],
-          ],
+          inline_keyboard: [[{ text: "📢 Kanalga qo'shilish", url: CHANNEL_URL }]],
         },
       });
     }
-    // await this.userService.createOrUpdateFromTelegram(ctx.from);
-    const role = await this.userService.getRole(userId);
-    return role === 'admin' ? this.showTeacherMenu(ctx) : this.showStudentMenu(ctx);
+
+    await this.userService.createOrUpdateFromTelegram(ctx.from);
+    const role = await this.resolveUserRole(userId);
+
+    return this.showMenuByRole(ctx, role);
+  }
+
+  private async resolveUserRole(userId: number): Promise<'admin' | 'teacher' | 'student'> {
+    const roleFromDb = await this.userService.getRole(userId);
+    if (roleFromDb === 'admin') return roleFromDb;
+
+    // fallback: agar bazada yo‘q bo‘lsa, TEACHER_ID ro‘yxatidan tekshiramiz
+    if (TEACHER_ID.includes(userId)) return 'teacher';
+
+    return 'student';
+  }
+
+  private async showMenuByRole(ctx: BotContext, role: 'admin' | 'teacher' | 'student') {
+    if (role === 'admin' || role === 'teacher') {
+      return this.showTeacherMenu(ctx);
+    }
+    return this.showStudentMenu(ctx);
   }
 
   async showTeacherMenu(ctx: BotContext) {
-    // console.log(ctx)
-    await ctx.reply("Xush kelibsiz ustoz! Amallarni tanlang 👇",
+    await ctx.reply("👨‍🏫 Xush kelibsiz ustoz! Amallarni tanlang 👇",
       Markup.keyboard([
-        [{text:"➕ Dars qo'shish"}],
-        [{text:"📚 Darslar"} ],
-      ]).resize(),
+        ["➕ Dars qo'shish"],
+        ["📚 Darslar"],
+        ["📊 Statistika"],
+        ["⬅️ Asosiy menyu"]
+      ]).resize()
     );
   }
 
   async showStudentMenu(ctx: BotContext) {
     const user = await this.userService.findByTelegramId(ctx.from?.id);
-    if (!user) return;
-    return ctx.reply(`Hurmatli ${user.fullName}, xush kelibsiz!`, {
+    if(!user) return 'User topilmadi'
+    const name = user?.fullName ?? 'Foydalanuvchi';
+    return ctx.reply(`👋 Hurmatli ${name}, xush kelibsiz!`, {
       reply_markup: {
-        keyboard: [["📚 Darslar"]],
+        keyboard: [["📚 Darslar"], ["ℹ️ Yordam"]],
         resize_keyboard: true,
       },
     });
   }
 
+  private async askToJoinChannel(ctx: BotContext) {
+    return ctx.reply(
+      "Assalomu alaykum! Botdan foydalanish uchun kanalga qo'shiling 👇",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📢 Kanalga qo'shilish", url: CHANNEL_URL }],
+            [{ text: "✅ Tasdiqlash", callback_data: 'check_membership' }],
+          ],
+        },
+      }
+    );
+  }
+
   async checkChannelMembership(userId: number): Promise<boolean> {
     try {
-      console.log('shu yer ishladi bot service checkChannelMembers');
-
       const member = await this.bot.telegram.getChatMember(TELEGRAM_CHANNEL_ID, userId);
       return member.status !== 'left' && member.status !== 'kicked';
     } catch (error) {

@@ -10,6 +10,7 @@ import { UserModule } from 'src/modules/user/user.module';
 import { User } from 'src/common/core/entitys/user.entity';
 import { Lesson } from 'src/modules/lesson/entity/lesson.entity';
 import { LessonCreateCommand } from '../lesson/lesson-create.command';
+import { LessonViewCommand } from '../lesson/lesson-view.command';
 // import { LessonViewCommand } from '../lesson/lesson-view.command';
 
 @Module({
@@ -22,8 +23,8 @@ import { LessonCreateCommand } from '../lesson/lesson-create.command';
         BotUpdate,
         BotService,
         ChannelGuard,
+        LessonViewCommand,
         LessonCreateCommand,
-        // LessonViewCommand,
         // LessonService,
         // UserService,
     ],

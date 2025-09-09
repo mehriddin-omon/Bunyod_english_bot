@@ -5,20 +5,25 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { LessonCreateCommand } from './lesson-create.command';
 import { BotModule } from '../bot/bot.module';
 import { UserModule } from '../user/user.module';
-import { ListeningModule } from '../listening';
+import { Listening, ListeningModule } from '../listening';
+import { LessonViewCommand } from './lesson-view.command';
 
 @Module({
   imports: [
     BotModule,
     UserModule,
     ListeningModule,
-    // forwardRef(() => BotModule),
-    TypeOrmModule.forFeature([Lesson])
+    TypeOrmModule.forFeature([Lesson,Listening])
   ],
   providers: [
-    LessonService, 
-    LessonCreateCommand, 
+    LessonService,
+    LessonViewCommand,
+    LessonCreateCommand,
   ],
-  exports: [LessonService, LessonCreateCommand]
+  exports: [
+    LessonService,
+    LessonViewCommand,
+    LessonCreateCommand
+  ]
 })
 export class LessonModule { }

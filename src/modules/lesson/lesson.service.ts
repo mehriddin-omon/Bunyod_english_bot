@@ -2,21 +2,61 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Lesson } from './entity/lesson.entity';
+import { Listening } from '../listening';
 
 @Injectable()
 export class LessonService {
   constructor(
     @InjectRepository(Lesson)
     private readonly lessonRepo: Repository<Lesson>,
-  ) { }
+
+    @InjectRepository(Listening)
+    private readonly listeningRepo: Repository<Listening>
+  ) {}
 
   /**
    * Yangi dars yaratish
    */
-  async createLesson(lesson_name: string): Promise<Lesson> {
-    const lesson = this.lessonRepo.create({ lesson_name });
-    return this.lessonRepo.save(lesson);
+  async saveFullLesson(data: any): Promise<Lesson> {
+  // 1. Lesson yaratish
+  const lesson = this.lessonRepo.create({
+    lesson_name: data.lesson_name?.content ?? 'Nomlanmagan dars',
+  });
+  const savedLesson = await this.lessonRepo.save(lesson);
+
+  const lessonId = savedLesson.id;
+
+  // 2. Listening fayllarni saqlash
+  if (Array.isArray(data.listening)) {
+    for (const item of data.listening) {
+      await this.listeningRepo.save({
+        lesson: { id: lessonId },
+        fileId: item.fileId,
+        message_id: item.channelMessageId.toString(),
+        title: 'Audio',
+        order_index: Date.now(),
+      });
+    }
   }
+
+  // 3. Reading fayllarni saqlash
+  // if (Array.isArray(data.reading)) {
+  //   for (const item of data.reading) {
+  //     await this.readingRepo.save({
+  //       lesson: { id: lessonId },
+  //       url: item.url,
+  //       title: item.title ?? 'Reading',
+  //       order_index: Date.now(),
+  //     });
+  //   }
+  // }
+
+  // 4. Test va WordList ham xuddi shu tarzda
+  // ...
+
+  return savedLesson;
+}
+
 
   /**
    * Barcha darslarni olish
@@ -29,19 +69,18 @@ export class LessonService {
 
   /**
    * Darsni ID bo‘yicha olish (resourcelarsiz)
-  */
+   */
   async getLessonById(id: string): Promise<Lesson | null> {
     return this.lessonRepo.findOne({ where: { id } });
   }
 
   /**
-   * Darsni barcha resurslari bilan olish (agar kerak bo‘lsa)
-   * Eslatma: relations faqat kerakli bo‘lsa qo‘shiladi
+   * Darsni barcha bo‘limlari bilan olish
    */
   async getLessonWithRelations(id: string): Promise<Lesson | null> {
     return this.lessonRepo.findOne({
       where: { id },
-      relations: ['listening', 'reading', 'test', 'word_list'],
+      relations: ['listening', 'readings', 'tests', 'wordList'],
     });
   }
 

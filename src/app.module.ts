@@ -51,7 +51,7 @@ import { WordlistModule } from './modules/wordlist/wordlist.module';
         password: config.get<string>('DB_PASSWORD', 'mehriddin'),
         database: config.get<string>('DB_NAME', 'bunyod_english'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        // synchronize: config.get<boolean>('DB_SYNC', true),
+        synchronize: config.get<boolean>('DB_SYNC', true),
       }),
     }),
 

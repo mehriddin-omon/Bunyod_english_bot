@@ -1,4 +1,5 @@
 import { UseGuards } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Action, Ctx, Hears, On, Update } from 'nestjs-telegraf';
 import { AdminGuard } from 'src/common/guard/admin.guard';
 import type { BotContext } from 'src/common/utils/bot.context';
@@ -11,9 +12,14 @@ import {
   setAwaiting,
 } from 'src/common/utils/session.utils';
 import { Markup } from 'telegraf';
+import { LessonService } from './lesson.service';
 
 @Update()
 export class LessonCreateCommand {
+constructor(
+  private readonly lessonService: LessonService,
+){}
+
   @UseGuards(AdminGuard)
   @Hears("➕ Dars qo'shish")
   async startLessonMenu(@Ctx() ctx: BotContext) {
@@ -62,8 +68,8 @@ export class LessonCreateCommand {
         }
       }
 
-      // TODO: Bazaga saqlash (data ni to‘liq)
-      console.log("Saqlanayotgan dars:", data);
+      //Bazaga saqlash (data ni to‘liq)
+      await this.lessonService.saveFullLesson(data)
 
       clearSession(ctx);
       await ctx.reply("✅ Dars va fayllar muvaffaqiyatli saqlandi.");
@@ -73,7 +79,7 @@ export class LessonCreateCommand {
     }
   }
 
-  @Hears("🎧 Listening")
+  @Hears("🎧 Listening qo'shish")
   async awaitingListening(@Ctx() ctx: BotContext) {
     initSession(ctx);
     setAwaiting(ctx, 'listening');
@@ -82,8 +88,6 @@ export class LessonCreateCommand {
 
   @On('text')
   async handleText(@Ctx() ctx: BotContext) {
-    console.log('text qabul qilindi', ctx);
-
     assertSession(ctx);
     const awaiting = ctx.session.awaiting;
     const text =
@@ -157,8 +161,8 @@ export class LessonCreateCommand {
       `📚 WordList: ${data.word_list?.length || 0} ta`,
       Markup.keyboard([
         ["📌 Dars nomi"],
-        ["🎧 Listening", "📖 Reading"],
-        ["📝 Test", "📚 WordList"],
+        ["🎧 Listening qo'shish", "📖 Reading"],
+        ["📝 Test qo'shish", "📚 WordList qo'shish"],
         ["💾 Saqlash", "❌ Bekor qilish"],
       ]).resize()
     );

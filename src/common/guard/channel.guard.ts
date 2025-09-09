@@ -1,40 +1,39 @@
-// src/common/guards/channel.guard.ts
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Context as TelegrafContext } from 'telegraf';
-import { Reflector } from '@nestjs/core';
 import { CHANNEL_URL, TELEGRAM_CHANNEL_ID } from '../utils/const';
 
 @Injectable()
 export class ChannelGuard implements CanActivate {
-  constructor(private reflector: Reflector) { }
-
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const telegrafContext = context.switchToHttp().getRequest<TelegrafContext>();
-    const userId = telegrafContext.from?.id;
+    const ctx = context.switchToHttp().getRequest<TelegrafContext>();
+    const userId = ctx.from?.id;
 
     if (!userId) {
+      console.warn('ChannelGuard: ctx.from.id yo‘q');
       return true;
     }
 
     try {
-      const member = await telegrafContext.telegram.getChatMember(TELEGRAM_CHANNEL_ID, userId);
+      const member = await ctx.telegram.getChatMember(TELEGRAM_CHANNEL_ID, userId);
 
       if (['creator', 'administrator', 'member'].includes(member.status)) {
-        return true; //a'zo bo'lsa handlerga o'tkazadi 
+        return true;
       }
 
-      await telegrafContext.reply("Botdan foydalanish uchun kanalga a'zo bo'ling 👇", {
+      await ctx.reply("Botdan foydalanish uchun kanalga a'zo bo‘ling 👇", {
         reply_markup: {
           inline_keyboard: [
             [{ text: "🔗 Kanalga o‘tish", url: CHANNEL_URL }],
+            [{ text: "✅ Tasdiqlash", callback_data: 'check_membership' }],
           ],
         },
       });
-      return true; // faqat a'zo bo'lmaganda to'xtatiladi 
+
+      return false;
     } catch (err) {
-      console.error('Guard error >>>', err.message);
-      await telegrafContext.reply("Xatolik yuz berdi. Iltimos, qayta urinib ko‘ring.");
-      return true;
+      console.error('ChannelGuard xatolik:', err.message);
+      await ctx.reply("❌ Kanalga a’zolikni tekshirishda xatolik yuz berdi.");
+      return false;
     }
   }
 }

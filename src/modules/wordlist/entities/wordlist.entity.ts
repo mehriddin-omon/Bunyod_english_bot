@@ -10,6 +10,9 @@ export class WordList extends BaseEntity {
   @Column()
   uzbek: string;
 
+  @Column()
+  message_id: string;
+
   @Column({ type: "bigint" })
   order_index: number;
 
