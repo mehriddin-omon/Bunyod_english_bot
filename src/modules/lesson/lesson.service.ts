@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Lesson } from './entity/lesson.entity';
 import { Listening } from '../listening';
+import { LessonStatus } from 'src/common/utils/enum';
 
 @Injectable()
 export class LessonService {
@@ -12,50 +13,50 @@ export class LessonService {
 
     @InjectRepository(Listening)
     private readonly listeningRepo: Repository<Listening>
-  ) {}
+  ) { }
 
   /**
    * Yangi dars yaratish
    */
   async saveFullLesson(data: any): Promise<Lesson> {
-  // 1. Lesson yaratish
-  const lesson = this.lessonRepo.create({
-    lesson_name: data.lesson_name?.content ?? 'Nomlanmagan dars',
-  });
-  const savedLesson = await this.lessonRepo.save(lesson);
+    // 1. Lesson yaratish
+    const lesson = this.lessonRepo.create({
+      lesson_name: data.lesson_name?.content ?? 'Nomlanmagan dars',
+    });
+    const savedLesson = await this.lessonRepo.save(lesson);
 
-  const lessonId = savedLesson.id;
+    const lessonId = savedLesson.id;
 
-  // 2. Listening fayllarni saqlash
-  if (Array.isArray(data.listening)) {
-    for (const item of data.listening) {
-      await this.listeningRepo.save({
-        lesson: { id: lessonId },
-        fileId: item.fileId,
-        message_id: item.channelMessageId.toString(),
-        title: 'Audio',
-        order_index: Date.now(),
-      });
+    // 2. Listening fayllarni saqlash
+    if (Array.isArray(data.listening)) {
+      for (const item of data.listening) {
+        await this.listeningRepo.save({
+          lesson: { id: lessonId },
+          fileId: item.fileId,
+          message_id: item.channelMessageId.toString(),
+          title: 'Audio',
+          order_index: Date.now(),
+        });
+      }
     }
+
+    // 3. Reading fayllarni saqlash
+    // if (Array.isArray(data.reading)) {
+    //   for (const item of data.reading) {
+    //     await this.readingRepo.save({
+    //       lesson: { id: lessonId },
+    //       url: item.url,
+    //       title: item.title ?? 'Reading',
+    //       order_index: Date.now(),
+    //     });
+    //   }
+    // }
+
+    // 4. Test va WordList ham xuddi shu tarzda
+    // ...
+
+    return savedLesson;
   }
-
-  // 3. Reading fayllarni saqlash
-  // if (Array.isArray(data.reading)) {
-  //   for (const item of data.reading) {
-  //     await this.readingRepo.save({
-  //       lesson: { id: lessonId },
-  //       url: item.url,
-  //       title: item.title ?? 'Reading',
-  //       order_index: Date.now(),
-  //     });
-  //   }
-  // }
-
-  // 4. Test va WordList ham xuddi shu tarzda
-  // ...
-
-  return savedLesson;
-}
 
 
   /**
@@ -63,7 +64,9 @@ export class LessonService {
    */
   async getAllLessons(): Promise<Lesson[]> {
     return this.lessonRepo.find({
-      order: { created_at: 'DESC' },
+      where: { status: LessonStatus.draft },    //  Faqat published darslar
+      order: { created_at: 'ASC' },      //  'ASC' — "ascending" (o‘sish) tartib, ya'ni eng eski darslar ro‘yxat boshida bo‘ladi.
+      // order: { created_at: 'DESC' },  //  'DESC' — "descending" (kamayish) tartib, ya'ni eng yangi darslar ro‘yxat boshida bo‘ladi.
     });
   }
 
@@ -80,7 +83,7 @@ export class LessonService {
   async getLessonWithRelations(id: string): Promise<Lesson | null> {
     return this.lessonRepo.findOne({
       where: { id },
-      relations: ['listening', 'readings', 'tests', 'wordList'],
+      relations: ['listening', 'reading', 'test', 'word_list'],
     });
   }
 

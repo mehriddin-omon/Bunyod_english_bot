@@ -16,6 +16,6 @@ export class WordList extends BaseEntity {
   @Column({ type: "bigint" })
   order_index: number;
 
-  @ManyToOne(() => Lesson, (lesson) => lesson.wordList)
+  @ManyToOne(() => Lesson, (lesson) => lesson.word_list)
   lesson: Lesson;
 }

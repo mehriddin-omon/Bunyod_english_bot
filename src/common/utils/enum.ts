@@ -5,7 +5,7 @@ export enum ResourceType {
 }
 
 export enum LessonStatus {
-  draft = 'draft',
-  published = 'published',
-  archived = 'archived',
+  draft = 'draft',           // hali chala tayyorlangan 
+  published = 'published',   // tayyor holatga keltirilgan 
+  archived = 'archived',     // o'chirilgan 
 }

@@ -13,6 +13,6 @@ export class Test extends BaseEntity {
   @Column({ type: "bigint" })
   order_index: number;
 
-  @ManyToOne(() => Lesson, (lesson) => lesson.tests)
+  @ManyToOne(() => Lesson, (lesson) => lesson.test)
   lesson: Lesson;
 }

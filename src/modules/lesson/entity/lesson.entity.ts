@@ -8,7 +8,6 @@ import { Test } from 'src/modules/tests';
 
 @Entity({ name: 'lessons' })
 export class Lesson extends BaseEntity {
-
   @Column({
     name: 'lesson_name',
     nullable: false,
@@ -27,11 +26,11 @@ export class Lesson extends BaseEntity {
   listening: Listening[];
 
   @OneToMany(() => Reading, (reading) => reading.lesson)
-  readings: Reading[];
+  reading: Reading[];
 
   @OneToMany(() => WordList, (word) => word.lesson)
-  wordList: WordList[];
+  word_list: WordList[];
 
   @OneToMany(() => Test, (test) => test.lesson)
-  tests: Test[];
+  test: Test[];
 }

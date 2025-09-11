@@ -58,9 +58,9 @@ export class LessonViewCommand {
 
         const sections = [
             { label: "🎧 Listening", data: lesson.listening },
-            { label: "📖 Reading", data: lesson.readings },
-            { label: "📝 Test", data: lesson.tests },
-            { label: "📚 WordList", data: lesson.wordList },
+            { label: "📖 Reading", data: lesson.reading },
+            { label: "📝 Test", data: lesson.test },
+            { label: "📚 WordList", data: lesson.word_list },
         ];
 
         const availableSections = sections.filter(section => section.data?.length);

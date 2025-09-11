@@ -13,6 +13,6 @@ export class Reading extends BaseEntity {
   @Column({ type: "bigint" })
   order_index: number;
 
-  @ManyToOne(() => Lesson, (lesson) => lesson.readings)
+  @ManyToOne(() => Lesson, (lesson) => lesson.reading)
   lesson: Lesson;
 }
