@@ -28,7 +28,7 @@ export class Lesson extends BaseEntity {
   @OneToMany(() => Reading, (reading) => reading.lesson)
   reading: Reading[];
 
-  @OneToMany(() => WordList, (word) => word.lesson)
+  @OneToMany(() => WordList, (word_list) => word_list.lesson)
   word_list: WordList[];
 
   @OneToMany(() => Test, (test) => test.lesson)

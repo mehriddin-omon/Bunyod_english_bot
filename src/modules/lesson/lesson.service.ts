@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { Lesson } from './entity/lesson.entity';
 import { Listening } from '../listening';
 import { LessonStatus } from 'src/common/utils/enum';
+import { Message } from 'telegraf/types';
+import { Reading } from '../reading';
 
 @Injectable()
 export class LessonService {
@@ -12,8 +14,65 @@ export class LessonService {
     private readonly lessonRepo: Repository<Lesson>,
 
     @InjectRepository(Listening)
-    private readonly listeningRepo: Repository<Listening>
+    private readonly listeningRepo: Repository<Listening>,
+
+    @InjectRepository(Reading)
+    private readonly readingRepo: Repository<Reading>,
+
   ) { }
+
+  extractMediaData(message: Message, sentMessageId: number) {
+    if ('audio' in message && message.audio) {
+      return {
+        type: 'audio',
+        fileId: message.audio.file_id,
+        title: message.audio.title,
+        channelMessageId: sentMessageId,
+      };
+    }
+    if ('voice' in message && message.voice) {
+      return {
+        type: 'voice',
+        fileId: message.voice.file_id,
+        channelMessageId: sentMessageId,
+      };
+    }
+    if ('video' in message && message.video) {
+      return {
+        type: 'video',
+        fileId: message.video.file_id,
+        channelMessageId: sentMessageId,
+        caption: message.caption,
+      };
+    }
+    if ('document' in message && message.document) {
+      return {
+        type: 'document',
+        fileId: message.document.file_id,
+        fileName: message.document.file_name,
+        channelMessageId: sentMessageId,
+        caption: message.caption,
+      };
+    }
+    if ('photo' in message && Array.isArray(message.photo) && message.photo.length) {
+      // Eng katta o'lchamdagi rasmni olish
+      const largestPhoto = message.photo[message.photo.length - 1];
+      return {
+        type: 'photo',
+        fileId: largestPhoto.file_id,
+        channelMessageId: sentMessageId,
+        caption: message.caption,
+      };
+    }
+    if ('text' in message && typeof message.text === 'string') {
+      return {
+        type: 'text',
+        text: message.text,
+        channelMessageId: sentMessageId,
+      };
+    }
+    return { type: 'unknown' };
+  }
 
   /**
    * Yangi dars yaratish
@@ -41,16 +100,17 @@ export class LessonService {
     }
 
     // 3. Reading fayllarni saqlash
-    // if (Array.isArray(data.reading)) {
-    //   for (const item of data.reading) {
-    //     await this.readingRepo.save({
-    //       lesson: { id: lessonId },
-    //       url: item.url,
-    //       title: item.title ?? 'Reading',
-    //       order_index: Date.now(),
-    //     });
-    //   }
-    // }
+    
+    if (Array.isArray(data.reading)) {
+      for (const item of data.reading) {
+        await this.readingRepo.save({
+          lesson: { id: lessonId },
+          message_id: item.channelMessageId.toString(),
+          title: item.title ?? 'Reading',
+          order_index: Date.now(),
+        });
+      }
+    }
 
     // 4. Test va WordList ham xuddi shu tarzda
     // ...

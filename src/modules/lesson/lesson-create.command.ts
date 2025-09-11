@@ -16,9 +16,9 @@ import { LessonService } from './lesson.service';
 
 @Update()
 export class LessonCreateCommand {
-constructor(
-  private readonly lessonService: LessonService,
-){}
+  constructor(
+    private readonly lessonService: LessonService,
+  ) { }
 
   @UseGuards(AdminGuard)
   @Hears("➕ Dars qo'shish")
@@ -67,6 +67,21 @@ constructor(
           }
         }
       }
+      // 🔁 Har bir reading faylni channelga nusxalash
+      if (data.reading?.length) {
+        for (const file of data.reading) {
+          if (typeof file.fileId === 'string') {
+            const sent = await ctx.telegram.sendVoice(
+              SAVED_TELEGRAM_CHANNEL_ID,
+              file.fileId,
+              {
+                caption: `🎧 ${data.lesson_name.content} — Reading`,
+              }
+            );
+            file.channelMessageId = sent.message_id; // 🔐 endi channelda bor
+          }
+        }
+      }
 
       //Bazaga saqlash (data ni to‘liq)
       await this.lessonService.saveFullLesson(data)
@@ -84,6 +99,13 @@ constructor(
     initSession(ctx);
     setAwaiting(ctx, 'listening');
     await ctx.reply("🎧 Audio fayl yuboring");
+  }
+
+  @Hears("📖 Reading qo'shish")
+  async awaitingReading(@Ctx() ctx: BotContext) {
+    initSession(ctx);
+    setAwaiting(ctx, 'reading');
+    await ctx.reply("📖 PDF (document) yoki video fayl yuboring");
   }
 
   @On('text')
@@ -116,52 +138,58 @@ constructor(
 
   @On('message')
   async handleIncomingFile(@Ctx() ctx: BotContext) {
+    console.log(ctx);
+
     assertSession(ctx);
     const awaiting = ctx.session.awaiting;
     const message = ctx.message;
 
     if (!awaiting || !message || !ctx.chat?.id) return;
 
-    // ListeningHandler orqali channelga nusxalangan fayl ID ni olish
     const forwardedMessageId = 'forward_from_message_id' in message
       ? (message as any).forward_from_message_id
       : message.message_id;
 
-    // Fayl turini aniqlash
-    let fileData: any = null;
+    const fileData = this.lessonService.extractMediaData(message, forwardedMessageId);
 
-    if ('voice' in message && message.voice?.file_id) {
-      fileData = {
-        type: 'voice',
-        fileId: message.voice.file_id,
-        channelMessageId: forwardedMessageId,
-      };
-    } else if ('audio' in message && message.audio?.file_id) {
-      fileData = {
-        type: 'audio',
-        fileId: message.audio.file_id,
-        channelMessageId: forwardedMessageId,
-      };
-    } else {
-      return ctx.reply("❌ Yuborilgan fayl audio formatda emas.");
+    // Listening uchun audio yoki video faylni sessionga qo‘shish
+    if (
+      awaiting === 'listening' &&
+      (fileData.type === 'audio' || fileData.type === 'voice' || fileData.type === 'video')
+    ) {
+      pushResource(ctx, awaiting as any, fileData);
+      await ctx.reply(`✅ ${fileData.type === 'video' ? 'Video' : 'Audio'} fayl sessionga qo‘shildi.`);
+      return;
     }
 
-    pushResource(ctx, awaiting as any, fileData);
-    await ctx.reply("✅ Fayl sessionga qo‘shildi.");
+    // Reading uchun PDF (document) yoki video faylni sessionga qo‘shish
+    if (
+      awaiting === 'reading' &&
+      (fileData.type === 'document' || fileData.type === 'video')
+    ) {
+      pushResource(ctx, awaiting as any, fileData);
+      await ctx.reply(`✅ ${fileData.type === 'video' ? 'Video' : 'PDF'} fayl sessionga qo‘shildi.`);
+      return;
+    }
+
+    await ctx.reply("❌ Yuborilgan fayl formatiga mos emas.");
   }
 
   private async showLessonMenu(ctx: BotContext) {
     const data = ctx.session?.data || {};
+    const listening = data.listening || [];
+    const audioCount = listening.filter((f: any) => f.type === 'audio' || f.type === 'voice').length;
+    const videoCount = listening.filter((f: any) => f.type === 'video').length;
     await ctx.reply(
       `📌 Dars qo‘shish menyusi:\n\n` +
       `📌 Nomi: ${data.lesson_name?.content || '❌ Yo‘q'}\n` +
-      `🎧 Listening: ${data.listening?.length || 0} ta\n` +
+      `🎧 Listening: ${audioCount} ta audio, ${videoCount} ta video\n` +
       `📖 Reading: ${data.reading?.length || 0} ta\n` +
       `📝 Test: ${data.test?.length || 0} ta\n` +
       `📚 WordList: ${data.word_list?.length || 0} ta`,
       Markup.keyboard([
         ["📌 Dars nomi"],
-        ["🎧 Listening qo'shish", "📖 Reading"],
+        ["🎧 Listening qo'shish", "📖 Reading qo'shish"],
         ["📝 Test qo'shish", "📚 WordList qo'shish"],
         ["💾 Saqlash", "❌ Bekor qilish"],
       ]).resize()

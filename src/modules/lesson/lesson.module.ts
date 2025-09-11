@@ -7,13 +7,14 @@ import { BotModule } from '../bot/bot.module';
 import { UserModule } from '../user/user.module';
 import { Listening, ListeningModule } from '../listening';
 import { LessonViewCommand } from './lesson-view.command';
+import { Reading } from '../reading';
 
 @Module({
   imports: [
     BotModule,
     UserModule,
     ListeningModule,
-    TypeOrmModule.forFeature([Lesson,Listening])
+    TypeOrmModule.forFeature([Lesson, Listening, Reading])
   ],
   providers: [
     LessonService,

@@ -93,9 +93,9 @@ export class LessonViewCommand {
 
         const sectionMap = {
             "🎧 Listening": "listening",
-            "📖 Reading": "readings",
-            "📝 Test": "tests",
-            "📚 WordList": "wordList",
+            "📖 Reading": "reading",
+            "📝 Test": "test",
+            "📚 WordList": "word_list",
         } as const;
 
         const relationKey = sectionMap[typeText as keyof typeof sectionMap];
