@@ -152,9 +152,7 @@ export class LessonCreateCommand {
       if (!words.length) {
         return ctx.reply("❌ Format noto‘g‘ri yoki wordlar topilmadi.");
       }
-
-      let savedCount = 0;
-
+      let savedCount = 0;  // save qilingan wordlistlarni sanaydi 
       for (const word of words) {
         try {
           const filePath = path.join('./voices', `${word.english}.mp3`);
