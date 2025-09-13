@@ -13,11 +13,15 @@ import {
 } from 'src/common/utils/session.utils';
 import { Markup } from 'telegraf';
 import { LessonService } from './lesson.service';
-
+import { WordlistService } from '../wordlist/wordlist.service';
+import path from 'path';
+import fs from 'fs'
 @Update()
 export class LessonCreateCommand {
   constructor(
     private readonly lessonService: LessonService,
+    private readonly wordlistService: WordlistService,
+
   ) { }
 
   @UseGuards(AdminGuard)
@@ -75,7 +79,7 @@ export class LessonCreateCommand {
               SAVED_TELEGRAM_CHANNEL_ID,
               file.fileId,
               {
-                caption: `🎧 ${data.lesson_name.content} — Reading`,
+                caption: `📖 ${data.lesson_name.content} — Reading`,
               }
             );
             file.channelMessageId = sent.message_id; // 🔐 endi channelda bor
@@ -108,6 +112,13 @@ export class LessonCreateCommand {
     await ctx.reply("📖 PDF (document) yoki video fayl yuboring");
   }
 
+  @Hears("📚 WordList qo'shish")
+  async awaitingWordList(@Ctx() ctx: BotContext) {
+    initSession(ctx);
+    setAwaiting(ctx, 'word_list');
+    await ctx.reply("📚 Word qo‘shing (format: `english - uzbek`), optional: transcription, example, voice.");
+  }
+
   @On('text')
   async handleText(@Ctx() ctx: BotContext) {
     assertSession(ctx);
@@ -134,12 +145,65 @@ export class LessonCreateCommand {
       await ctx.reply(`📌 Dars nomi saqlandi: ${text}`);
       await this.showLessonMenu(ctx);
     }
+
+    if (awaiting === 'word_list') {
+      const { category, words } = await this.wordlistService.parseWordListText(text);
+
+      if (!words.length) {
+        return ctx.reply("❌ Format noto‘g‘ri yoki wordlar topilmadi.");
+      }
+
+      let savedCount = 0;
+
+      for (const word of words) {
+        try {
+          const filePath = path.join('./voices', `${word.english}.mp3`);
+          await this.wordlistService.generateVoice(word.english, './voices');
+
+          const sent = await ctx.telegram.sendVoice(
+            SAVED_TELEGRAM_CHANNEL_ID,
+            { source: fs.createReadStream(filePath) },
+            { caption: `${word.english} - ${word.uzbek}` }
+          );
+
+          const wordItem = {
+            type: 'word_list',
+            english: word.english,
+            uzbek: word.uzbek,
+            transcription: word.transcription,
+            voice_file_id: sent.voice.file_id,
+            message_id: sent.message_id.toString(),
+            order_index: Date.now(),
+            category,
+          };
+
+          if (!ctx.session.data.word_list) {
+            ctx.session.data.word_list = [];
+          }
+
+          ctx.session.data.word_list.push(wordItem);
+          savedCount++;
+
+        } catch (error: any) {
+          if (error?.response?.error_code === 429) {
+            const retryAfter = error.response.parameters?.retry_after ?? 30;
+            await ctx.reply(`⏳ Telegram blokladi. ${savedCount} ta so‘z saqlandi. Qolganlarini keyinroq yuboring.`);
+            break;
+          } else {
+            console.error(`❌ Xatolik: ${word.english}`, error);
+          }
+        }
+      }
+
+      ctx.session.awaiting = null;
+      await ctx.reply(`✅ ${words.length} ta word saqlandi (category: ${category})`);
+      await this.showLessonMenu(ctx);
+    }
+
   }
 
   @On('message')
   async handleIncomingFile(@Ctx() ctx: BotContext) {
-    console.log(ctx);
-
     assertSession(ctx);
     const awaiting = ctx.session.awaiting;
     const message = ctx.message;

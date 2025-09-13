@@ -4,7 +4,6 @@ import { TelegrafModule, TelegrafModuleOptions } from 'nestjs-telegraf';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { session } from 'telegraf';
 
-import { AppService } from './app.service';
 import { LessonModule } from './modules/lesson/lesson.module';
 import { UserModule } from './modules/user/user.module';
 import { BotModule } from './modules/bot/bot.module';
@@ -51,7 +50,7 @@ import { WordlistModule } from './modules/wordlist/wordlist.module';
         password: config.get<string>('DB_PASSWORD', 'mehriddin'),
         database: config.get<string>('DB_NAME', 'bunyod_english'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        // synchronize: config.get<boolean>('DB_SYNC', true),
+        synchronize: config.get<boolean>('DB_SYNC', true),
       }),
     }),
 
@@ -65,11 +64,10 @@ import { WordlistModule } from './modules/wordlist/wordlist.module';
     WordlistModule,
   ],
   providers: [
-    {
-      provide: APP_GUARD,
-      useClass: AdminGuard
-    },
-    AppService
+    // {
+    //   provide: APP_GUARD,
+    //   useClass: AdminGuard
+    // },
   ],
 })
 export class AppModule { }

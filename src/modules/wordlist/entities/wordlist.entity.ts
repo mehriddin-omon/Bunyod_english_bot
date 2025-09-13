@@ -9,9 +9,21 @@ export class WordList extends BaseEntity {
 
   @Column()
   uzbek: string;
+  
+  @Column({ nullable: true })
+  category: string;
 
-  @Column()
+  @Column({ type: "bigint" })
   message_id: string;
+
+  @Column({ nullable: true })
+  voice_file_id: string;
+
+  @Column({ nullable: true })
+  transcription: string;
+
+  @Column({ nullable: true })
+  example: string;
 
   @Column({ type: "bigint" })
   order_index: number;

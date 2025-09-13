@@ -11,12 +11,15 @@ import { User } from 'src/common/core/entitys/user.entity';
 import { Lesson } from 'src/modules/lesson/entity/lesson.entity';
 import { LessonCreateCommand } from '../lesson/lesson-create.command';
 import { LessonViewCommand } from '../lesson/lesson-view.command';
+import { WordlistService } from '../wordlist/wordlist.service';
+import { WordlistModule } from '../wordlist/wordlist.module';
 // import { LessonViewCommand } from '../lesson/lesson-view.command';
 
 @Module({
     imports: [
         forwardRef(() => LessonModule),
         UserModule,
+        WordlistModule,
         TypeOrmModule.forFeature([User,Lesson]),
     ],
     providers: [
@@ -25,7 +28,6 @@ import { LessonViewCommand } from '../lesson/lesson-view.command';
         ChannelGuard,
         LessonViewCommand,
         LessonCreateCommand,
-        // LessonService,
         // UserService,
     ],
     exports: [

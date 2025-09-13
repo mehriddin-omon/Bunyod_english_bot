@@ -8,13 +8,21 @@ import { UserModule } from '../user/user.module';
 import { Listening, ListeningModule } from '../listening';
 import { LessonViewCommand } from './lesson-view.command';
 import { Reading } from '../reading';
+import { WordList } from '../wordlist';
+import { WordlistModule } from '../wordlist/wordlist.module';
 
 @Module({
   imports: [
     BotModule,
     UserModule,
     ListeningModule,
-    TypeOrmModule.forFeature([Lesson, Listening, Reading])
+    WordlistModule,
+    TypeOrmModule.forFeature([
+      Lesson,
+      Listening,
+      Reading,
+      WordList
+    ])
   ],
   providers: [
     LessonService,

@@ -6,6 +6,7 @@ import { Listening } from '../listening';
 import { LessonStatus } from 'src/common/utils/enum';
 import { Message } from 'telegraf/types';
 import { Reading } from '../reading';
+import { WordList } from '../wordlist';
 
 @Injectable()
 export class LessonService {
@@ -18,6 +19,9 @@ export class LessonService {
 
     @InjectRepository(Reading)
     private readonly readingRepo: Repository<Reading>,
+
+    @InjectRepository(WordList)
+    private readonly wordListRepo: Repository<WordList>,
 
   ) { }
 
@@ -100,7 +104,7 @@ export class LessonService {
     }
 
     // 3. Reading fayllarni saqlash
-    
+
     if (Array.isArray(data.reading)) {
       for (const item of data.reading) {
         await this.readingRepo.save({
@@ -112,7 +116,24 @@ export class LessonService {
       }
     }
 
-    // 4. Test va WordList ham xuddi shu tarzda
+    // 4.word_list fayllarini saqlash 
+
+    if (Array.isArray(data.word_list)) {
+      for (const item of data.word_list) {
+        await this.wordListRepo.save({
+          lesson: { id: lessonId },
+          english: item.english,
+          uzbek: item.uzbek,
+          transcription: item.transcription ?? null,
+          voice_file_id: item.voice_file_id ?? null,
+          message_id: item.message_id,
+          order_index: item.order_index,
+          category: item.category ?? null,
+        });
+      }
+    }
+
+    // 5. Test fayllarini saqlash
     // ...
 
     return savedLesson;
