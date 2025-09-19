@@ -7,6 +7,7 @@ import { LessonStatus } from 'src/common/utils/enum';
 import { Message } from 'telegraf/types';
 import { Reading } from '../reading';
 import { WordList } from '../wordlist';
+import { LessonField, LessonFileType } from 'src/common/utils/bot.context';
 
 @Injectable()
 export class LessonService {
@@ -25,57 +26,36 @@ export class LessonService {
 
   ) { }
 
-  extractMediaData(message: Message, sentMessageId: number) {
+  extractMediaData(message: Message, forwardedMessageId: number): LessonField {
+    let type: LessonFileType = 'unknown';
+    let fileId: string | undefined;
+    let fileName: string | undefined;
+
     if ('audio' in message && message.audio) {
-      return {
-        type: 'audio',
-        fileId: message.audio.file_id,
-        title: message.audio.title,
-        channelMessageId: sentMessageId,
-      };
+      type = 'audio';
+      fileId = message.audio.file_id;
+      fileName = message.audio.file_name;
+    } else if ('voice' in message && message.voice) {
+      type = 'voice';
+      fileId = message.voice.file_id;
+    } else if ('video' in message && message.video) {
+      type = 'video';
+      fileId = message.video.file_id;
+    } else if ('document' in message && message.document) {
+      type = 'document';
+      fileId = message.document.file_id;
+      fileName = message.document.file_name;
+    } else if ('photo' in message && message.photo?.length) {
+      type = 'photo';
+      fileId = message.photo[message.photo.length - 1].file_id;
     }
-    if ('voice' in message && message.voice) {
-      return {
-        type: 'voice',
-        fileId: message.voice.file_id,
-        channelMessageId: sentMessageId,
-      };
-    }
-    if ('video' in message && message.video) {
-      return {
-        type: 'video',
-        fileId: message.video.file_id,
-        channelMessageId: sentMessageId,
-        caption: message.caption,
-      };
-    }
-    if ('document' in message && message.document) {
-      return {
-        type: 'document',
-        fileId: message.document.file_id,
-        fileName: message.document.file_name,
-        channelMessageId: sentMessageId,
-        caption: message.caption,
-      };
-    }
-    if ('photo' in message && Array.isArray(message.photo) && message.photo.length) {
-      // Eng katta o'lchamdagi rasmni olish
-      const largestPhoto = message.photo[message.photo.length - 1];
-      return {
-        type: 'photo',
-        fileId: largestPhoto.file_id,
-        channelMessageId: sentMessageId,
-        caption: message.caption,
-      };
-    }
-    if ('text' in message && typeof message.text === 'string') {
-      return {
-        type: 'text',
-        text: message.text,
-        channelMessageId: sentMessageId,
-      };
-    }
-    return { type: 'unknown' };
+
+    return {
+      type,
+      fileId,
+      fileName,
+      channelMessageId: forwardedMessageId,
+    };
   }
 
   /**

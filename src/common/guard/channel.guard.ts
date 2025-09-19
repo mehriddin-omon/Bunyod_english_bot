@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Context as TelegrafContext } from 'telegraf';
 import { CHANNEL_URL, TELEGRAM_CHANNEL_ID } from '../utils/const';
 
@@ -10,7 +10,7 @@ export class ChannelGuard implements CanActivate {
 
     if (!userId) {
       console.warn('ChannelGuard: ctx.from.id yo‘q');
-      return true;
+      throw new ForbiddenException('Foydalanuvchi topilmadi')
     }
 
     try {
@@ -19,17 +19,9 @@ export class ChannelGuard implements CanActivate {
       if (['creator', 'administrator', 'member'].includes(member.status)) {
         return true;
       }
-
-      await ctx.reply("Botdan foydalanish uchun kanalga a'zo bo‘ling 👇", {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "🔗 Kanalga o‘tish", url: CHANNEL_URL }],
-            [{ text: "✅ Tasdiqlash", callback_data: 'check_membership' }],
-          ],
-        },
-      });
-
+      ctx.state.needMembershipReply = true;
       return false;
+      
     } catch (err) {
       console.error('ChannelGuard xatolik:', err.message);
       await ctx.reply("❌ Kanalga a’zolikni tekshirishda xatolik yuz berdi.");

@@ -13,21 +13,21 @@ export class BotService {
   constructor(
     @InjectBot() private readonly bot: Telegraf<BotContext>,
     private readonly userService: UserService,
-  ) {}
+  ) { }
 
   async sendStartMessage(ctx: BotContext) {
     const userId = ctx.from?.id;
-    if (!userId) return ctx.reply('❌ Foydalanuvchi aniqlanmadi.');
+    if (!userId)
+      return ctx.reply('❌ Foydalanuvchi aniqlanmadi.');
 
     const isMember = await this.checkChannelMembership(userId);
-    if (!isMember) {
+    if (!isMember)
       return this.askToJoinChannel(ctx);
-    }
 
     await this.userService.createOrUpdateFromTelegram(ctx.from);
     const role = await this.resolveUserRole(userId);
 
-    return this.showMenuByRole(ctx, role);
+    return await this.showMenuByRole(ctx, role);
   }
 
   async confirmMembership(ctx: BotContext) {
@@ -36,7 +36,7 @@ export class BotService {
 
     const isMember = await this.checkChannelMembership(userId);
     if (!isMember) {
-      return ctx.reply("❌ Siz hali kanalga a'zo bo'lmadingiz.", {
+      return await ctx.reply("❌ Siz hali kanalga a'zo bo'lmadingiz.", {
         reply_markup: {
           inline_keyboard: [[{ text: "📢 Kanalga qo'shilish", url: CHANNEL_URL }]],
         },
@@ -45,8 +45,7 @@ export class BotService {
 
     await this.userService.createOrUpdateFromTelegram(ctx.from);
     const role = await this.resolveUserRole(userId);
-
-    return this.showMenuByRole(ctx, role);
+    await this.showMenuByRole(ctx, role);
   }
 
   private async resolveUserRole(userId: number): Promise<'admin' | 'teacher' | 'student'> {
@@ -61,9 +60,9 @@ export class BotService {
 
   private async showMenuByRole(ctx: BotContext, role: 'admin' | 'teacher' | 'student') {
     if (role === 'admin' || role === 'teacher') {
-      return this.showTeacherMenu(ctx);
+      return await this.showTeacherMenu(ctx);
     }
-    return this.showStudentMenu(ctx);
+    return await this.showStudentMenu(ctx);
   }
 
   async showTeacherMenu(ctx: BotContext) {
@@ -79,9 +78,8 @@ export class BotService {
 
   async showStudentMenu(ctx: BotContext) {
     const user = await this.userService.findByTelegramId(ctx.from?.id);
-    if(!user) return 'User topilmadi'
-    const name = user?.fullName ?? 'Foydalanuvchi';
-    return ctx.reply(`👋 Hurmatli ${name}, xush kelibsiz!`, {
+    const name = (user) ? user.fullName : 'Foydalanuvchi';
+    await ctx.reply(`👋 Hurmatli ${name}, xush kelibsiz!`, {
       reply_markup: {
         keyboard: [["📚 Darslar"], ["ℹ️ Yordam"]],
         resize_keyboard: true,

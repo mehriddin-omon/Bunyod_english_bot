@@ -9,12 +9,13 @@ export class WordlistService {
 
 
     async generateVoice(word: string, outputDir: string) {
+        // this.sleep(1000);
         const tts = new gTTS(word, 'en'); // 'en' — inglizcha
         const filePath = path.join(outputDir, `${word}.mp3`);
 
         return new Promise<void>((resolve, reject) => {
             tts.save(filePath, (err) => {
-                if (err) return reject(err);
+                // if (err) return reject(err);
                 console.log(`✅ Voice saved: ${filePath}`);
                 resolve();
             });
@@ -26,22 +27,34 @@ export class WordlistService {
 
         const categoryLine = lines.find((l) => l.toLowerCase().startsWith('category:'));
         const category = categoryLine?.split(':')[1]?.trim() ?? 'Unknown';
-
+        
         const wordLines = lines.filter((l) => l.startsWith('•'));
 
         const words = wordLines
             .map((line) => {
-                const match = line.match(/•\s*(.+?)\s*\/(.+?)\/\s*–\s*(.+)/);
-                if (!match) return null;
+                // Format: • word /transcription/ – translation
+                const fullMatch = line.match(/•\s*(.+?)\s*\/(.+?)\/\s*–\s*(.+)/);
+                if (fullMatch) {
+                    const [, english, transcription, uzbek] = fullMatch;
+                    return {
+                        english: english.trim(),
+                        transcription: transcription.trim(),
+                        uzbek: uzbek.trim(),
+                    };
+                }
 
-                const [, english, transcription, uzbek] = match;
-                return {
-                    english: english.trim(),
-                    transcription: transcription.trim(),
-                    uzbek: uzbek.trim(),
-                };
-            })
-            .filter((w): w is { english: string; transcription: string; uzbek: string } => w !== null); // ✅ Type narrowing
+                // Format: • word – translation (no transcription)
+                const simpleMatch = line.match(/•\s*(.+?)\s*–\s*(.+)/);
+                if (simpleMatch) {
+                    const [, english, uzbek] = simpleMatch;
+                    return {
+                        english: english.trim(),
+                        transcription: '', // yoki null
+                        uzbek: uzbek.trim(),
+                    };
+                }
+                return null;
+            }).filter((w): w is { english: string; transcription: string; uzbek: string } => w !== null); // ✅ Type narrowing
 
         return { category, words };
     }

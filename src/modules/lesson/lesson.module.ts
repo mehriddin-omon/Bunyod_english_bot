@@ -10,10 +10,11 @@ import { LessonViewCommand } from './lesson-view.command';
 import { Reading } from '../reading';
 import { WordList } from '../wordlist';
 import { WordlistModule } from '../wordlist/wordlist.module';
+import { Test } from '../tests';
 
 @Module({
   imports: [
-    BotModule,
+    forwardRef(() => (BotModule)),
     UserModule,
     ListeningModule,
     WordlistModule,
@@ -21,7 +22,8 @@ import { WordlistModule } from '../wordlist/wordlist.module';
       Lesson,
       Listening,
       Reading,
-      WordList
+      WordList,
+      Test
     ])
   ],
   providers: [

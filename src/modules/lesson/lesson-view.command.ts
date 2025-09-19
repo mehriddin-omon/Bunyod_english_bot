@@ -14,7 +14,7 @@ export class LessonViewCommand {
     async showLessons(@Ctx() ctx: BotContext) {
         const lessons = await this.lessonService.getAllLessons();
         if (!lessons.length) {
-            return ctx.reply("📚 Hali darslar mavjud emas.");
+            return await ctx.reply("📚 Hali darslar mavjud emas.");
         }
 
         const keyboard = lessons.map((lesson, index) => [`📗 Unit ${index + 1}`]);

@@ -1,9 +1,10 @@
 import { Lesson } from 'src/modules';
 import type { Context } from 'telegraf';
+
 export type LessonFileType = 'text' | 'document' | 'audio' | 'photo' | 'video' | 'voice' | 'unknown';
 
 export interface LessonField {
-  type: string;
+  type: LessonFileType;
   content?: string;
   fileId?: string;
   fileName?: string;
@@ -11,13 +12,25 @@ export interface LessonField {
   channelMessageId?: number;
 }
 
+export interface WordItem {
+  type: 'word_list';
+  english: string;
+  uzbek: string;
+  transcription?: string;
+  example?: string;
+  voice_file_id?: string;
+  message_id?: string;
+  order_index: number;
+  category?: string;
+}
+
 export interface SessionData {
   data: {
     lesson_name?: LessonField;
     listening?: LessonField[];
     reading?: LessonField[];
+    word_list?: WordItem[];
     test?: LessonField[];
-    word_list?: LessonField[];
   };
   awaiting?: keyof SessionData['data'] | null;
   lessonId?: string | null;

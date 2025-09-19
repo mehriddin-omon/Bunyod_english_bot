@@ -1,14 +1,12 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TelegrafModule, TelegrafModuleOptions } from 'nestjs-telegraf';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { Module } from '@nestjs/common';
 import { session } from 'telegraf';
 
-import { LessonModule } from './modules/lesson/lesson.module';
-import { UserModule } from './modules/user/user.module';
 import { BotModule } from './modules/bot/bot.module';
-import { APP_GUARD } from '@nestjs/core';
-import { AdminGuard } from './common/guard/admin.guard';
+import { UserModule } from './modules/user/user.module';
+import { LessonModule } from './modules/lesson/lesson.module';
 import { ListeningModule } from './modules/listening/listening.module';
 import { ReadingModule } from './modules/reading/reading.module';
 import { TestsModule } from './modules/tests/tests.module';
@@ -31,7 +29,7 @@ import { WordlistModule } from './modules/wordlist/wordlist.module';
         if (!token)
           throw new Error('Missing TELEGRAM_TOKEN in .env');
 
-        return {         
+        return {
           token,
           middlewares: [session()],
         };
@@ -63,11 +61,6 @@ import { WordlistModule } from './modules/wordlist/wordlist.module';
     TestsModule,
     WordlistModule,
   ],
-  providers: [
-    // {
-    //   provide: APP_GUARD,
-    //   useClass: AdminGuard
-    // },
-  ],
+  providers: [],
 })
 export class AppModule { }

@@ -2,7 +2,7 @@ import { UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Action, Ctx, Hears, On, Update } from 'nestjs-telegraf';
 import { AdminGuard } from 'src/common/guard/admin.guard';
-import type { BotContext } from 'src/common/utils/bot.context';
+import type { BotContext, WordItem } from 'src/common/utils/bot.context';
 import { SAVED_TELEGRAM_CHANNEL_ID } from 'src/common/utils/const';
 import {
   assertSession,
@@ -87,6 +87,28 @@ export class LessonCreateCommand {
         }
       }
 
+      if (data.word_list?.length) {
+        for (const word of data.word_list) {
+          try {
+            const filePath = path.join('./voices', `${word.english}.mp3`);
+            await this.wordlistService.generateVoice(word.english, './voices');
+            
+
+            const sent = await ctx.telegram.sendVoice(
+              SAVED_TELEGRAM_CHANNEL_ID,
+              { source: fs.createReadStream(filePath) },
+              { caption: `${word.english} - ${word.uzbek}` }
+            );
+            
+            word.voice_file_id = sent.voice.file_id;
+            word.message_id = sent.message_id.toString(); // 🔐 MUHIM QATOR
+          } catch (error: any) {
+            console.error(`❌ WordList yuborishda xatolik: ${word.english}`, error);
+          }
+        }
+      }
+
+
       //Bazaga saqlash (data ni to‘liq)
       await this.lessonService.saveFullLesson(data)
 
@@ -152,51 +174,29 @@ export class LessonCreateCommand {
       if (!words.length) {
         return ctx.reply("❌ Format noto‘g‘ri yoki wordlar topilmadi.");
       }
-      let savedCount = 0;
+
+      if (!ctx.session.data.word_list) {
+        ctx.session.data.word_list = [];
+      }
+
       for (const word of words) {
-        try {
-          const filePath = path.join('./voices', `${word.english}.mp3`);
-          await this.wordlistService.generateVoice(word.english, './voices');
+        const wordItem: WordItem = {
+          type: 'word_list',
+          english: word.english,
+          uzbek: word.uzbek,
+          transcription: word.transcription,
+          order_index: Date.now(),
+          category,
+        };
 
-          const sent = await ctx.telegram.sendVoice(
-            SAVED_TELEGRAM_CHANNEL_ID,
-            { source: fs.createReadStream(filePath) },
-            { caption: `${word.english} - ${word.uzbek}` }
-          );
-
-          const wordItem = {
-            type: 'word_list',
-            english: word.english,
-            uzbek: word.uzbek,
-            transcription: word.transcription,
-            voice_file_id: sent.voice.file_id,
-            message_id: sent.message_id.toString(),
-            order_index: Date.now(),
-            category,
-          };
-
-          if (!ctx.session.data.word_list) {
-            ctx.session.data.word_list = [];
-          }
-
-          ctx.session.data.word_list.push(wordItem);
-          savedCount++;
-
-        } catch (error: any) {
-          if (error?.response?.error_code === 429) {
-            const retryAfter = error.response.parameters?.retry_after ?? 30;
-            await ctx.reply(`⏳ Telegram blokladi. ${savedCount} ta so‘z saqlandi. Qolganlarini keyinroq yuboring.`);
-            break;
-          } else {
-            console.error(`❌ Xatolik: ${word.english}`, error);
-          }
-        }
+        ctx.session.data.word_list.push(wordItem);
       }
 
       ctx.session.awaiting = null;
-      await ctx.reply(`✅ ${words.length} ta word saqlandi (category: ${category})`);
+      await ctx.reply(`✅ ${words.length} ta word sessionga saqlandi (category: ${category})`);
       await this.showLessonMenu(ctx);
     }
+
 
   }
 
@@ -219,7 +219,7 @@ export class LessonCreateCommand {
       awaiting === 'listening' &&
       (fileData.type === 'audio' || fileData.type === 'voice' || fileData.type === 'video')
     ) {
-      pushResource(ctx, awaiting as any, fileData);
+      pushResource(ctx, awaiting, fileData);
       await ctx.reply(`✅ ${fileData.type === 'video' ? 'Video' : 'Audio'} fayl sessionga qo‘shildi.`);
       return;
     }
