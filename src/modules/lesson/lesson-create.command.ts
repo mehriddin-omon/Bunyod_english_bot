@@ -1,27 +1,24 @@
+import { Ctx, Hears, On, Update } from 'nestjs-telegraf';
 import { UseGuards } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Action, Ctx, Hears, On, Update } from 'nestjs-telegraf';
-import { AdminGuard } from 'src/common/guard/admin.guard';
-import type { BotContext, WordItem } from 'src/common/utils/bot.context';
-import { SAVED_TELEGRAM_CHANNEL_ID } from 'src/common/utils/const';
-import {
-  assertSession,
-  clearSession,
-  initSession,
-  pushResource,
-  setAwaiting,
-} from 'src/common/utils/session.utils';
 import { Markup } from 'telegraf';
-import { LessonService } from './lesson.service';
-import { WordlistService } from '../wordlist/wordlist.service';
 import path from 'path';
-import fs from 'fs'
+import fs from 'fs';
+
+import { WordlistService } from '../wordlist/wordlist.service';
+import { LessonService } from './lesson.service';
+// import { TestsService } from '../tests/tests.service';
+import {
+  type BotContext, AdminGuard, assertSession, clearSession, initSession, pushResource, setAwaiting, SAVED_TELEGRAM_CHANNEL_ID, WordItem,
+} from 'src/common';
+import { BotService } from '../bot/bot.service';
+
 @Update()
 export class LessonCreateCommand {
   constructor(
+    private readonly botService: BotService,
     private readonly lessonService: LessonService,
     private readonly wordlistService: WordlistService,
-
+    // private readonly testsService: TestsService,
   ) { }
 
   @UseGuards(AdminGuard)
@@ -34,7 +31,9 @@ export class LessonCreateCommand {
   @Hears("❌ Bekor qilish")
   async cancelLesson(@Ctx() ctx: BotContext) {
     clearSession(ctx);
-    await ctx.reply("❌ Dars qo‘shish bekor qilindi.");
+    const text = "❌ Dars qo‘shish bekor qilindi.";
+    // 🔙 Teacher menyusiga qaytish
+    await this.botService.showTeacherMenu(ctx, text);
   }
 
   @Hears("📌 Dars nomi")
@@ -49,7 +48,6 @@ export class LessonCreateCommand {
     assertSession(ctx);
 
     const data = ctx.session.data;
-    const chatId = ctx.chat?.id;
 
     if (!data.lesson_name?.content) {
       return ctx.reply("❌ Dars nomi kiritilmagan.");
@@ -92,14 +90,14 @@ export class LessonCreateCommand {
           try {
             const filePath = path.join('./voices', `${word.english}.mp3`);
             await this.wordlistService.generateVoice(word.english, './voices');
-            
+
 
             const sent = await ctx.telegram.sendVoice(
               SAVED_TELEGRAM_CHANNEL_ID,
               { source: fs.createReadStream(filePath) },
               { caption: `${word.english} - ${word.uzbek}` }
             );
-            
+
             word.voice_file_id = sent.voice.file_id;
             word.message_id = sent.message_id.toString(); // 🔐 MUHIM QATOR
           } catch (error: any) {
@@ -140,6 +138,13 @@ export class LessonCreateCommand {
     setAwaiting(ctx, 'word_list');
     await ctx.reply("📚 Word qo‘shing (format: `english - uzbek`), optional: transcription, example, voice.");
   }
+
+  // @Hears("📝 Test qo'shish")
+  // async awaitingTest(@Ctx() ctx: BotContext) {
+  //   initSession(ctx);
+  //   setAwaiting(ctx, 'test');
+  //   await ctx.reply("📝 Test savollarini yuboring (format: `1. Question?\nA) Option1\nB) Option2\nC) Option3\nD) Option4\nAnswer: A`)")
+  // };
 
   @On('text')
   async handleText(@Ctx() ctx: BotContext) {
@@ -197,6 +202,25 @@ export class LessonCreateCommand {
       await this.showLessonMenu(ctx);
     }
 
+    // if (awaiting === 'test') {
+    //   try {
+    //     const parsed = await this.testsService.parseTestToJson(text);
+
+    //     if (!parsed.length) {
+    //       return ctx.reply("❌ Test savollari topilmadi yoki format noto‘g‘ri.");
+    //     }
+
+    //     // ctx.session.data.test = parsed;
+    //     ctx.session.awaiting = null;
+
+    //     await ctx.reply(`✅ ${parsed.length} ta test savol sessionga saqlandi.`);
+    //     await this.showLessonMenu(ctx);
+    //   } catch (error) {
+    //     console.error("❌ Test parsingda xatolik:", error);
+    //     await ctx.reply("❌ Test parsingda xatolik yuz berdi.");
+    //   }
+    // }
+
 
   }
 
@@ -233,7 +257,6 @@ export class LessonCreateCommand {
       await ctx.reply(`✅ ${fileData.type === 'video' ? 'Video' : 'PDF'} fayl sessionga qo‘shildi.`);
       return;
     }
-
     await ctx.reply("❌ Yuborilgan fayl formatiga mos emas.");
   }
 

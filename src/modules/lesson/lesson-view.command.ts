@@ -10,14 +10,14 @@ import { SAVED_TELEGRAM_CHANNEL_ID } from 'src/common/utils/const';
 export class LessonViewCommand {
     constructor(private readonly lessonService: LessonService) { }
 
-    @Hears("📚 Darslar")
-    async showLessons(@Ctx() ctx: BotContext) {
+    @Hears("📚 Darslar ro'yxati")
+    async showTeacherLessons(@Ctx() ctx: BotContext) {
         const lessons = await this.lessonService.getAllLessons();
         if (!lessons.length) {
             return await ctx.reply("📚 Hali darslar mavjud emas.");
         }
 
-        const keyboard = lessons.map((lesson, index) => [`📗 Unit ${index + 1}`]);
+        const keyboard = lessons.map((lesson, index) => [`✏️ ${lesson.lesson_name}`]);
         keyboard.push(["⬅️ Asosiy menyu"]);
 
         ctx.session ??= {
@@ -26,12 +26,57 @@ export class LessonViewCommand {
             currentLessonId: null,
             lessons: [],
         };
-        ctx.session.lessons = lessons;
 
+        ctx.session.lessons = lessons;
+        await ctx.reply("📚 Darslar ro'yxati (teacher uchun):", Markup.keyboard(keyboard).resize());
+    }
+
+    @Hears(/^✏️ (.+)$/)
+    async editLesson(@Ctx() ctx: BotContext) {
+        const lessonName = ctx.match?.[1];
+        const lessons = ctx.session?.lessons ?? [];
+
+        const selected = lessons.find(l => l.lesson_name === lessonName);
+        if (!selected) return ctx.reply("❌ Dars topilmadi.");
+
+        ctx.session ??= {
+            data: {},
+            awaiting: null,
+            currentLessonId: null,
+            lessons: [],
+        };
+        ctx.session.currentLessonId = selected.id;
+
+        await ctx.reply(`✏️ Dars tanlandi: ${selected.lesson_name}`, Markup.keyboard([
+            ["📌 Nomini o‘zgartirish"],
+            ["🎧 Listening qo‘shish", "📖 Reading qo‘shish"],
+            ["📚 WordList qo‘shish", "📝 Test qo‘shish"],
+            ["💾 Saqlash", "⬅️ Asosiy menyu"]
+        ]).resize());
+    }
+
+    @Hears("📚 Darslar")
+    async showLessons(@Ctx() ctx: BotContext) {
+        const lessons = await this.lessonService.getAllLessons();
+        if (!lessons.length) {
+            return await ctx.reply("📚 Hali darslar mavjud emas.");
+        }
+
+        const keyboard = lessons.map((lesson, index) => [`📗 Lesson ${index + 1}`]);
+        keyboard.push(["⬅️ Asosiy menyu"]);
+
+        ctx.session ??= {
+            data: {},
+            awaiting: null,
+            currentLessonId: null,
+            lessons: [],
+        };
+
+        ctx.session.lessons = lessons;
         await ctx.reply("📚 Mavjud darslar:", Markup.keyboard(keyboard).resize());
     }
 
-    @Hears(/^📗 Unit (\d+)$/)
+    @Hears(/^📗 Lesson (\d+)$/)
     async selectLesson(@Ctx() ctx: BotContext) {
         const unitNumber = parseInt(ctx.match?.[1] ?? '', 10);
         if (isNaN(unitNumber)) {
@@ -127,6 +172,7 @@ export class LessonViewCommand {
 
     @Hears("🔙 Orqaga")
     async backToLessons(@Ctx() ctx: BotContext) {
+        
         return this.showLessons(ctx);
     }
 

@@ -1,21 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import gTTS from 'gtts';
-import fs from 'fs';
 import path from 'path';
 
 @Injectable()
 export class WordlistService {
     constructor() { }
 
-
     async generateVoice(word: string, outputDir: string) {
-        // this.sleep(1000);
+        this.sleep(1000);
         const tts = new gTTS(word, 'en'); // 'en' — inglizcha
         const filePath = path.join(outputDir, `${word}.mp3`);
 
         return new Promise<void>((resolve, reject) => {
             tts.save(filePath, (err) => {
-                // if (err) return reject(err);
+                if (err) return reject(err);
                 console.log(`✅ Voice saved: ${filePath}`);
                 resolve();
             });
@@ -62,4 +60,6 @@ export class WordlistService {
     async sleep(ms: number) {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
+
+
 }

@@ -1,1 +1,1 @@
-export *from './entities/reading.entity'
+export *from '../../common/core/entitys/reading.entity'

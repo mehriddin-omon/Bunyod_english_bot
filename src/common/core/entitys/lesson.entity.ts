@@ -1,5 +1,5 @@
 import { Entity, Column, OneToMany } from 'typeorm';
-import { BaseEntity } from 'src/common/core/baseEntity';
+import { BaseEntity } from 'src/common/core/entitys/base.entity';
 import { LessonStatus } from 'src/common/utils/enum';
 import { Listening } from 'src/modules/listening';
 import { Reading } from 'src/modules/reading';

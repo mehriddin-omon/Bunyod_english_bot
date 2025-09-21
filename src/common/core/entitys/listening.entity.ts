@@ -1,4 +1,4 @@
-import { BaseEntity } from "src/common/core/baseEntity";
+import { BaseEntity } from "src/common/core/entitys/base.entity";
 import { Lesson } from "src/modules/lesson";
 import { Column, Entity, ManyToOne } from "typeorm";
 

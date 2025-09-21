@@ -1,1 +1,1 @@
-export * from './entity/lesson.entity'
+export * from '../../common/core/entitys/lesson.entity'

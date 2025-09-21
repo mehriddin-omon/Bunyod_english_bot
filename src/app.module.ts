@@ -58,8 +58,8 @@ import { WordlistModule } from './modules/wordlist/wordlist.module';
     UserModule,
     ListeningModule,
     ReadingModule,
-    TestsModule,
     WordlistModule,
+    // TestsModule,
   ],
   providers: [],
 })

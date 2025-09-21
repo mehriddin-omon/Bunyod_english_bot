@@ -60,20 +60,16 @@ export class BotService {
 
   private async showMenuByRole(ctx: BotContext, role: 'admin' | 'teacher' | 'student') {
     if (role === 'admin' || role === 'teacher') {
-      return await this.showTeacherMenu(ctx);
+      return await this.showTeacherMenu(ctx, "👨‍🏫 Xush kelibsiz ustoz! Amallarni tanlang 👇");
     }
     return await this.showStudentMenu(ctx);
   }
 
-  async showTeacherMenu(ctx: BotContext) {
-    await ctx.reply("👨‍🏫 Xush kelibsiz ustoz! Amallarni tanlang 👇",
-      Markup.keyboard([
-        ["➕ Dars qo'shish"],
-        ["📚 Darslar"],
-        ["📊 Statistika"],
-        ["⬅️ Asosiy menyu"]
-      ]).resize()
-    );
+  async showTeacherMenu(ctx: BotContext, text: string) {
+    await ctx.reply(text, Markup.keyboard([
+      ["➕ Dars qo'shish", "📚 Darslar ro'yxati"],
+      ["📊 Statistika", "⚙️ Sozlamalar"],
+    ]).resize());
   }
 
   async showStudentMenu(ctx: BotContext) {

@@ -1,13 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Lesson } from './entity/lesson.entity';
-import { Listening } from '../listening';
-import { LessonStatus } from 'src/common/utils/enum';
 import { Message } from 'telegraf/types';
+import { Listening } from '../listening';
 import { Reading } from '../reading';
 import { WordList } from '../wordlist';
-import { LessonField, LessonFileType } from 'src/common/utils/bot.context';
+import { LessonField, LessonFileType, LessonStatus, Lesson } from 'src/common';
 
 @Injectable()
 export class LessonService {
@@ -146,6 +144,29 @@ export class LessonService {
       where: { id },
       relations: ['listening', 'reading', 'test', 'word_list'],
     });
+  }
+
+  // Dars statusini o‘zgartirish
+  async updateLessonStatus(id: string, status: LessonStatus): Promise<boolean> {
+    try {
+      const lesson = await this.lessonRepo.findOne({ where: { id } });
+      if (!lesson) return false;
+
+      lesson.status = status;
+      await this.lessonRepo.save(lesson);
+      return true;
+    } catch (error) {
+      console.error("❌ Dars statusini o‘zgartirishda xatolik:", error);
+      return false;
+    }
+  }
+
+  async updateLessonName(id: string, newName: string): Promise<boolean> {
+    const lesson = await this.lessonRepo.findOne({ where: { id } });
+    if (!lesson) return false;
+    lesson.lesson_name = newName;
+    await this.lessonRepo.save(lesson);
+    return true;
   }
 
   /**

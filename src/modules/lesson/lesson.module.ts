@@ -1,6 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { LessonService } from './lesson.service';
-import { Lesson } from './entity/lesson.entity';
+import { Lesson } from '../../common/core/entitys/lesson.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LessonCreateCommand } from './lesson-create.command';
 import { BotModule } from '../bot/bot.module';
@@ -11,6 +11,7 @@ import { Reading } from '../reading';
 import { WordList } from '../wordlist';
 import { WordlistModule } from '../wordlist/wordlist.module';
 import { Test } from '../tests';
+import { TestsModule } from '../tests/tests.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { Test } from '../tests';
     UserModule,
     ListeningModule,
     WordlistModule,
+    TestsModule,
     TypeOrmModule.forFeature([
       Lesson,
       Listening,
