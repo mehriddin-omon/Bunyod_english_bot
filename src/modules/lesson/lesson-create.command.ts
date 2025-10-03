@@ -11,6 +11,7 @@ import {
   type BotContext, AdminGuard, assertSession, clearSession, initSession, pushResource, setAwaiting, SAVED_TELEGRAM_CHANNEL_ID, WordItem,
 } from 'src/common';
 import { BotService } from '../bot/bot.service';
+import { CallbackQuery } from 'telegraf/types';
 
 @Update()
 export class LessonCreateCommand {
@@ -42,7 +43,7 @@ export class LessonCreateCommand {
     await ctx.reply("📌 Dars nomini kiriting:");
   }
 
-  @Hears("💾 Saqlash")
+  @Hears("✅ Saqlash")
   async saveLesson(@Ctx() ctx: BotContext) {
     initSession(ctx);
     assertSession(ctx);
@@ -132,14 +133,53 @@ export class LessonCreateCommand {
     await ctx.reply("📖 PDF (document) yoki video fayl yuboring");
   }
 
-  @Hears("📚 WordList qo'shish")
+  @Hears("📚 Vocabulary qo'shish")
   async awaitingWordList(@Ctx() ctx: BotContext) {
     initSession(ctx);
     setAwaiting(ctx, 'word_list');
     await ctx.reply("📚 Word qo‘shing (format: `english - uzbek`), optional: transcription, example, voice.");
   }
 
-  // @Hears("📝 Test qo'shish")
+  @Hears("🔄 Update status")
+  async updateStatus(@Ctx() ctx: BotContext) {
+    assertSession(ctx);
+
+    await ctx.reply(
+      "🟢 Dars statusini tanlang:",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("📝 Draft", "status_draft")],
+        [Markup.button.callback("✅ Published", "status_published")],
+        [Markup.button.callback("🗂 Archived", "status_archived")],
+      ])
+    );
+  }
+
+  // Inline tugmalar uchun handler
+  @On('callback_query')
+  async handleStatusCallback(@Ctx() ctx: BotContext) {
+    // GameQuery bo‘lsa, qaytib ketadi
+    if (ctx.callbackQuery && 'game_short_name' in ctx.callbackQuery) return;
+
+    const callbackQuery = ctx.callbackQuery as CallbackQuery.DataQuery;
+    if (!callbackQuery) return;
+
+    // Faqat "status_" bilan boshlanadigan callbacklarni qayta ishlash
+    const data = ctx.callbackQuery?.data;
+    if (!data?.startsWith('status_')) return;
+
+
+    assertSession(ctx);
+    ctx.session ??= { data: {}, prevPage: null };
+    // Statusni sessionga yozish yoki bazaga o‘zgartirish
+    const status = data.replace('status_', '');
+    if (!ctx.session.data) ctx.session.data = {};
+    await this.lessonService.updateLessonStatus(ctx.session.currentLessonId!, status as any);
+
+    await ctx.answerCbQuery(`Status: ${status} tanlandi`);
+    await ctx.reply(`✅ Dars statusi "${status}" ga o‘zgartirildi.`);
+  }
+
+  // @Hears("❓ Test qo'shish")
   // async awaitingTest(@Ctx() ctx: BotContext) {
   //   initSession(ctx);
   //   setAwaiting(ctx, 'test');
@@ -221,7 +261,6 @@ export class LessonCreateCommand {
     //   }
     // }
 
-
   }
 
   @On('message')
@@ -263,20 +302,23 @@ export class LessonCreateCommand {
   private async showLessonMenu(ctx: BotContext) {
     const data = ctx.session?.data || {};
     const listening = data.listening || [];
-    const audioCount = listening.filter((f: any) => f.type === 'audio' || f.type === 'voice').length;
+    const audioCount = listening.filter((f: any) => {
+      f.type === 'audio' || f.type === 'voice'
+    }).length;
     const videoCount = listening.filter((f: any) => f.type === 'video').length;
     await ctx.reply(
       `📌 Dars qo‘shish menyusi:\n\n` +
       `📌 Nomi: ${data.lesson_name?.content || '❌ Yo‘q'}\n` +
       `🎧 Listening: ${audioCount} ta audio, ${videoCount} ta video\n` +
       `📖 Reading: ${data.reading?.length || 0} ta\n` +
-      `📝 Test: ${data.test?.length || 0} ta\n` +
-      `📚 WordList: ${data.word_list?.length || 0} ta`,
+      `❓ Test: ${data.test?.length || 0} ta\n` +
+      `📚 Vocabulary: ${data.word_list?.length || 0} ta`,
       Markup.keyboard([
         ["📌 Dars nomi"],
         ["🎧 Listening qo'shish", "📖 Reading qo'shish"],
-        ["📝 Test qo'shish", "📚 WordList qo'shish"],
-        ["💾 Saqlash", "❌ Bekor qilish"],
+        ["📓 Grammar "],
+        ["📚 Vocabulary qo'shish", "❓ Test qo'shish"],
+        ["✅ Saqlash", "❌ Bekor qilish"],
       ]).resize()
     );
   }

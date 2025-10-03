@@ -75,7 +75,7 @@ export class BotService {
   async showStudentMenu(ctx: BotContext) {
     const user = await this.userService.findByTelegramId(ctx.from?.id);
     const name = (user) ? user.fullName : 'Foydalanuvchi';
-    await ctx.reply(`👋 Hurmatli ${name}, xush kelibsiz!`, {
+    await ctx.reply(`👋 Hurmatli ${name}, asosiy menudasiz!!`, {
       reply_markup: {
         keyboard: [["📚 Darslar"], ["ℹ️ Yordam"]],
         resize_keyboard: true,

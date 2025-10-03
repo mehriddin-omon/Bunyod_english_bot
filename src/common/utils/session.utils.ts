@@ -10,6 +10,8 @@ export function initSession(ctx: BotContext) {
       awaiting: null,
       lessonId: null,
       currentLessonId: null,
+      prevPage:null,
+
     };
   }
   if (!ctx.session.data) {
@@ -36,6 +38,7 @@ export function clearSession(ctx: BotContext) {
     awaiting: null,
     lessonId: null,
     currentLessonId: null,
+    prevPage: null,
   };
 }
 

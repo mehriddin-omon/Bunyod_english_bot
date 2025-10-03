@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Message } from 'telegraf/types';
 import { Listening } from '../listening';
 import { Reading } from '../reading';
 import { WordList } from '../wordlist';
 import { LessonField, LessonFileType, LessonStatus, Lesson } from 'src/common';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class LessonService {
@@ -21,6 +22,8 @@ export class LessonService {
 
     @InjectRepository(WordList)
     private readonly wordListRepo: Repository<WordList>,
+
+    private readonly userService: UserService,
 
   ) { }
 
@@ -121,9 +124,16 @@ export class LessonService {
   /**
    * Barcha darslarni olish
    */
-  async getAllLessons(): Promise<Lesson[]> {
+  async getAllLessons(userId: number): Promise<Lesson[]> {
+    const role = await this.userService.getRole(userId);
+    if (role === 'admin' || role === 'teacher') {
+      return this.lessonRepo.find({
+        order: { created_at: 'ASC' },      //  'ASC' — "ascending" (o‘sish) tartib, ya'ni eng eski darslar ro‘yxat boshida bo‘ladi.
+      });
+    }
+
     return this.lessonRepo.find({
-      where: { status: LessonStatus.draft },    //  Faqat published darslar
+      where: { status: LessonStatus.published },    //  Faqat published darslar
       order: { created_at: 'ASC' },      //  'ASC' — "ascending" (o‘sish) tartib, ya'ni eng eski darslar ro‘yxat boshida bo‘ladi.
       // order: { created_at: 'DESC' },  //  'DESC' — "descending" (kamayish) tartib, ya'ni eng yangi darslar ro‘yxat boshida bo‘ladi.
     });

@@ -31,9 +31,9 @@ export class UserService {
     return this.userRepository.save(user);
   }
 
-  async getRole(telegramId: number) {
-    const user = await this.userRepository.findOne({ where: { telegramId } })
-    return user?.role ?? 'student';
+  async getRole(telegramId: number): Promise<string | undefined> {
+    const user = await this.userRepository.findOne({ where: { telegramId } });
+    return user?.role;
   }
 
   async findByTelegramId(telegramId: number | null | undefined) {

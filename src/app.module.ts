@@ -9,7 +9,6 @@ import { UserModule } from './modules/user/user.module';
 import { LessonModule } from './modules/lesson/lesson.module';
 import { ListeningModule } from './modules/listening/listening.module';
 import { ReadingModule } from './modules/reading/reading.module';
-import { TestsModule } from './modules/tests/tests.module';
 import { WordlistModule } from './modules/wordlist/wordlist.module';
 
 @Module({
