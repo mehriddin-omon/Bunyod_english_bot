@@ -20,7 +20,8 @@ export class LessonViewCommand {
     async showTeacherLessons(@Ctx() ctx: BotContext) {
         const lessons = await this.lessonService.getAllLessons(ctx.from?.id!);
         if (!lessons.length) {
-            return await ctx.reply("📚 Hali darslar mavjud emas.");
+            await ctx.reply("📚 Hali darslar mavjud emas.");
+            return;
         }
 
         const keyboard = lessons.map((lesson, index) => [`✏️ ${lesson.lesson_name}`]);
@@ -67,10 +68,10 @@ export class LessonViewCommand {
     // Student menu
     @Hears("📚 Darslar")
     async showLessons(@Ctx() ctx: BotContext) {
-       
         const lessons = await this.lessonService.getAllLessons(ctx.from?.id!);
         if (!lessons.length) {
-            return await ctx.reply("📚 Hali darslar mavjud emas.");
+            await ctx.reply("📚 Hali darslar mavjud emas.");
+            return;
         }
 
         // Keyboardni har 2ta darsdan iborat qilib tuzish

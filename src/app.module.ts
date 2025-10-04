@@ -11,6 +11,8 @@ import { ListeningModule } from './modules/listening/listening.module';
 import { ReadingModule } from './modules/reading/reading.module';
 import { WordlistModule } from './modules/wordlist/wordlist.module';
 
+const isProd = process.env.NODE_ENV === 'production';
+
 @Module({
   imports: [
     // 🌱 Global config
@@ -27,7 +29,6 @@ import { WordlistModule } from './modules/wordlist/wordlist.module';
         const token = config.get<string>('TELEGRAM_TOKEN');
         if (!token)
           throw new Error('Missing TELEGRAM_TOKEN in .env');
-
         return {
           token,
           middlewares: [session()],
@@ -47,7 +48,8 @@ import { WordlistModule } from './modules/wordlist/wordlist.module';
         password: config.get<string>('DB_PASSWORD', 'mehriddin'),
         database: config.get<string>('DB_NAME', 'bunyod_english'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: config.get<boolean>('DB_SYNC', true),
+        synchronize: !isProd,
+        logging: !isProd,
       }),
     }),
 

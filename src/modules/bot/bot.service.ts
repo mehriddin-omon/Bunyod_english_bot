@@ -17,8 +17,10 @@ export class BotService {
 
   async sendStartMessage(ctx: BotContext) {
     const userId = ctx.from?.id;
-    if (!userId)
-      return ctx.reply('❌ Foydalanuvchi aniqlanmadi.');
+    if (!userId) {
+      await ctx.reply('❌ Foydalanuvchi aniqlanmadi.');
+      return;
+    }
 
     const isMember = await this.checkChannelMembership(userId);
     if (!isMember)
@@ -36,11 +38,12 @@ export class BotService {
 
     const isMember = await this.checkChannelMembership(userId);
     if (!isMember) {
-      return await ctx.reply("❌ Siz hali kanalga a'zo bo'lmadingiz.", {
+      await ctx.reply("❌ Siz hali kanalga a'zo bo'lmadingiz.", {
         reply_markup: {
           inline_keyboard: [[{ text: "📢 Kanalga qo'shilish", url: CHANNEL_URL }]],
         },
       });
+      return;
     }
 
     await this.userService.createOrUpdateFromTelegram(ctx.from);
@@ -84,7 +87,7 @@ export class BotService {
   }
 
   private async askToJoinChannel(ctx: BotContext) {
-    return ctx.reply(
+    await ctx.reply(
       "Assalomu alaykum! Botdan foydalanish uchun kanalga qo'shiling 👇",
       {
         reply_markup: {
@@ -95,6 +98,7 @@ export class BotService {
         },
       }
     );
+    return;
   }
 
   async checkChannelMembership(userId: number): Promise<boolean> {
