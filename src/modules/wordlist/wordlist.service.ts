@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import gTTS from 'gtts';
+import gTTS from 'google-tts-api';
 import path from 'path';
 
 @Injectable()
