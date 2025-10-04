@@ -34,7 +34,10 @@ export class BotService {
 
   async confirmMembership(ctx: BotContext) {
     const userId = ctx.from?.id;
-    if (!userId) return ctx.reply('❌ Foydalanuvchi aniqlanmadi.');
+    if (!userId) {
+      await ctx.reply('❌ Foydalanuvchi aniqlanmadi.');
+      return;
+    }
 
     const isMember = await this.checkChannelMembership(userId);
     if (!isMember) {

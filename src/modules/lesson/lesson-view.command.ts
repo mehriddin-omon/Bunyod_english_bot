@@ -42,24 +42,37 @@ export class LessonViewCommand {
     @Hears(/^✏️ (.+)$/)
     async editLesson(@Ctx() ctx: BotContext) {
         const lessonName = ctx.match?.[1];
-        const lessons = ctx.session?.lessons ?? [];
-
-        const selected = lessons.find(l => l.lesson_name === lessonName);
-        if (!selected) return ctx.reply("❌ Dars topilmadi.");
-
+        let lessons = ctx.session?.lessons;
+        // Sessionni kafolatlash
         ctx.session ??= {
             data: {},
             awaiting: null,
             currentLessonId: null,
-            prevPage: 'lessonDetail',
+            prevPage: 'mainMenu',
             lessons: [],
         };
+        // Agar sessionda yo‘q bo‘lsa, bazadan olib kelish
+        if (!lessons || !lessons.length) {
+            lessons = await this.lessonService.getAllLessons(ctx.from?.id!);
+            ctx.session.lessons = lessons;
+        }
+
+        if (!lessonName) {
+            await ctx.reply("❌ Dars nomi noto‘g‘ri.");
+            return;
+        }
+        const selected = lessons.find(l => l.lesson_name.trim() === lessonName.trim());
+        if (!selected) {
+            await ctx.reply("❌ Dars topilmadi.");
+            return;
+        }
+
         ctx.session.currentLessonId = selected.id;
 
         await ctx.reply(`✏️ Dars tanlandi: ${selected.lesson_name}`, Markup.keyboard([
             ["📌 Nomini o‘zgartirish"],
             ["🎧 Listening qo‘shish", "📖 Reading qo‘shish"],
-            ["📚 Vocablary qo‘shish", "❓️ Test qo‘shish"],
+            ["📚 Vocabulary qo‘shish", "❓️ Test qo‘shish"],
             ["🔄 Update status"],
             ["✅ Saqlash", "⬅️ Asosiy menyu"]
         ]).resize());
@@ -101,7 +114,8 @@ export class LessonViewCommand {
 
         const unitNumber = parseInt(ctx.match?.[1] ?? '', 10);
         if (isNaN(unitNumber)) {
-            return ctx.reply("❌ Lesson raqami noto‘g‘ri.");
+            await ctx.reply("❌ Lesson raqami noto‘g‘ri.");
+            return;
         }
 
         initSession(ctx);
@@ -111,12 +125,14 @@ export class LessonViewCommand {
         const baseLesson = lessons[unitNumber - 1];
 
         if (!baseLesson) {
-            return ctx.reply("❌ Dars topilmadi.");
+            await ctx.reply("❌ Dars topilmadi.");
+            return;
         }
 
         const lesson = await this.lessonService.getLessonWithRelations(baseLesson.id);
         if (!lesson) {
-            return ctx.reply("❌ Dars topilmadi.");
+            await ctx.reply("❌ Dars topilmadi.");
+            return;
         }
 
         ctx.session.currentLessonId = lesson.id;
@@ -158,7 +174,10 @@ export class LessonViewCommand {
     async sendLessonResource(@Ctx() ctx: BotContext) {
         initSession(ctx);
         const lessonId = ctx.session?.currentLessonId;
-        if (!lessonId) return ctx.reply("❌ Dars tanlanmagan.");
+        if (!lessonId) {
+            await ctx.reply("❌ Dars tanlanmagan.");
+            return;
+        }
 
         const typeText =
             ctx.message && 'text' in ctx.message && typeof ctx.message.text === 'string'
@@ -173,13 +192,14 @@ export class LessonViewCommand {
         } as const;
 
         const relationKey = sectionMap[typeText as keyof typeof sectionMap];
-        if (!relationKey) return ctx.reply("❌ Noto‘g‘ri material turi.");
+        if (!relationKey) await ctx.reply("❌ Noto‘g‘ri material turi.");
 
         const lesson = await this.lessonService.getLessonWithRelations(lessonId);
         const resources = lesson?.[relationKey];
 
         if (!resources || !Array.isArray(resources) || resources.length === 0) {
-            return ctx.reply(`❌ ${typeText} materiali mavjud emas.`);
+            await ctx.reply(`❌ ${typeText} materiali mavjud emas.`);
+            return;
         }
 
         for (const item of resources) {

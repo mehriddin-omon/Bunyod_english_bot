@@ -25,7 +25,7 @@ export class LessonCreateCommand {
   @UseGuards(AdminGuard)
   @Hears("➕ Dars qo'shish")
   async startLessonMenu(@Ctx() ctx: BotContext) {
-    initSession(ctx);
+    // initSession(ctx);
     await this.showLessonMenu(ctx);
   }
 
@@ -37,7 +37,7 @@ export class LessonCreateCommand {
     await this.botService.showTeacherMenu(ctx, text);
   }
 
-  @Hears("📌 Dars nomi")
+  @Hears(/^📌 Dars nomi$|^📌 Nomini o‘zgartirish$/)
   async awaitingLessonName(@Ctx() ctx: BotContext) {
     setAwaiting(ctx, 'lesson_name');
     await ctx.reply("📌 Dars nomini kiriting:");
@@ -45,13 +45,12 @@ export class LessonCreateCommand {
 
   @Hears("✅ Saqlash")
   async saveLesson(@Ctx() ctx: BotContext) {
-    initSession(ctx);
+
     assertSession(ctx);
-
     const data = ctx.session.data;
-
     if (!data.lesson_name?.content) {
-      return ctx.reply("❌ Dars nomi kiritilmagan.");
+      await ctx.reply("❌ Dars nomi kiritilmagan.");
+      return;
     }
 
     try {
@@ -107,9 +106,8 @@ export class LessonCreateCommand {
         }
       }
 
-
       //Bazaga saqlash (data ni to‘liq)
-      await this.lessonService.saveFullLesson(data)
+      await this.lessonService.saveFullLesson(data);
 
       clearSession(ctx);
       await ctx.reply("✅ Dars va fayllar muvaffaqiyatli saqlandi.");
@@ -133,7 +131,7 @@ export class LessonCreateCommand {
     await ctx.reply("📖 PDF (document) yoki video fayl yuboring");
   }
 
-  @Hears("📚 Vocabulary qo'shish")
+  @Hears("📚 Vocabulary qo‘shish")
   async awaitingWordList(@Ctx() ctx: BotContext) {
     initSession(ctx);
     setAwaiting(ctx, 'word_list');
@@ -217,7 +215,8 @@ export class LessonCreateCommand {
       const { category, words } = await this.wordlistService.parseWordListText(text);
 
       if (!words.length) {
-        return ctx.reply("❌ Format noto‘g‘ri yoki wordlar topilmadi.");
+        await ctx.reply("❌ Format noto‘g‘ri yoki wordlar topilmadi.");
+        return;
       }
 
       if (!ctx.session.data.word_list) {
@@ -247,7 +246,8 @@ export class LessonCreateCommand {
     //     const parsed = await this.testsService.parseTestToJson(text);
 
     //     if (!parsed.length) {
-    //       return ctx.reply("❌ Test savollari topilmadi yoki format noto‘g‘ri.");
+    //       await ctx.reply("❌ Test savollari topilmadi yoki format noto‘g‘ri.");
+    //       return;
     //     }
 
     //     // ctx.session.data.test = parsed;
