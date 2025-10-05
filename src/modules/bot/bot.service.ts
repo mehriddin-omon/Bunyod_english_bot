@@ -22,9 +22,9 @@ export class BotService {
       return;
     }
 
-    const isMember = await this.checkChannelMembership(userId);
+    const isMember = await this.checkGroupMembership(userId);
     if (!isMember)
-      return this.askToJoinChannel(ctx);
+      return this.askToJoinGroup(ctx);
 
     await this.userService.createOrUpdateFromTelegram(ctx.from);
     const role = await this.resolveUserRole(userId);
@@ -91,7 +91,7 @@ export class BotService {
     });
   }
 
-  private async askToJoinChannel(ctx: BotContext) {
+  private async askToJoinGroup(ctx: BotContext) {
     await ctx.reply(
       "Assalomu alaykum! Botdan foydalanish uchun guruhga qo'shiling 👇",
       {
