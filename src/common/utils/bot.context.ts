@@ -14,7 +14,7 @@ export interface LessonField {
 }
 
 export interface WordItem {
-  type?: 'word_list';
+  type?: 'vocabulary';
   english: string;
   uzbek: string;
   transcription?: string;
@@ -30,8 +30,9 @@ export interface SessionData {
     lesson_name?: LessonField;
     listening?: LessonField[];
     reading?: LessonField[];
-    word_list?: WordItem[];
-    test?: LessonField[];
+    grammer?: LessonField[];
+    vocabulary?: WordItem[];
+    test?: WordItem[];
     status?: LessonStatus;
   };
   awaiting?: keyof SessionData['data'] | null;

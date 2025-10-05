@@ -3,7 +3,7 @@ import gTTS from 'google-tts-api';
 import path from 'path';
 
 @Injectable()
-export class WordlistService {
+export class VocabularyService {
     constructor() { }
 
     async generateVoice(word: string, outputDir: string) {
@@ -20,11 +20,8 @@ export class WordlistService {
         });
     }
 
-    async parseWordListText(text: string) {
+    async parseVocabularyText(text: string) {
         const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-
-        const categoryLine = lines.find((l) => l.toLowerCase().startsWith('category:'));
-        const category = categoryLine?.split(':')[1]?.trim() ?? 'Unknown';
         
         const wordLines = lines.filter((l) => l.startsWith('•'));
 
@@ -54,12 +51,9 @@ export class WordlistService {
                 return null;
             }).filter((w): w is { english: string; transcription: string; uzbek: string } => w !== null); // ✅ Type narrowing
 
-        return { category, words };
+        return { words };
     }
-
     async sleep(ms: number) {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
-
-
 }

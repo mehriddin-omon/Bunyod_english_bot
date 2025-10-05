@@ -3,8 +3,8 @@ import { BaseEntity } from 'src/common/core/entitys/base.entity';
 import { LessonStatus } from 'src/common/utils/enum';
 import { Listening } from 'src/modules/listening';
 import { Reading } from 'src/modules/reading';
-import { WordList } from 'src/modules/wordlist';
 import { Test } from 'src/modules/tests';
+import { Vocabulary } from './vocabulary.entity';
 
 @Entity({ name: 'lessons' })
 export class Lesson extends BaseEntity {
@@ -28,8 +28,8 @@ export class Lesson extends BaseEntity {
   @OneToMany(() => Reading, (reading) => reading.lesson)
   reading: Reading[];
 
-  @OneToMany(() => WordList, (word_list) => word_list.lesson)
-  word_list: WordList[];
+  @OneToMany(() => Vocabulary, (vocabulary) => vocabulary.lesson)
+  vocabulary: Vocabulary[];
 
   @OneToMany(() => Test, (test) => test.lesson)
   test: Test[];

@@ -14,5 +14,5 @@ export class User extends BaseEntity{
     fullName: string;
 
     @Column({ type: 'varchar', name: 'role', nullable: true })
-    role: 'admin' | 'student';
+    role: 'admin' | 'student' | 'teacher';
 }

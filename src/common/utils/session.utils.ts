@@ -1,6 +1,6 @@
 import { BotContext, LessonField, SessionData, WordItem } from "./bot.context";
 
-type SessionArrayField = 'listening' | 'reading' | 'word_list' | 'test';
+type SessionArrayField = 'listening' | 'reading' | 'vocabulary' | 'test';
 
 // 🔧 Sessionni boshlash
 export function initSession(ctx: BotContext) {
@@ -45,7 +45,7 @@ export function clearSession(ctx: BotContext) {
 // 📥 Faylni sessionga qo‘shish – overload bilan
 export function pushResource(
   ctx: BotContext,
-  field: 'word_list',
+  field: 'vocabulary' | 'test',
   fileData: WordItem
 ): void;
 
@@ -64,14 +64,14 @@ export function pushResource(
   assertSession(ctx);
 
   if (!ctx.session.data[field]) {
-    if (field === 'word_list') {
+    if (field === 'vocabulary' || field === 'test') {
       ctx.session.data[field] = [] as WordItem[];
     } else {
       ctx.session.data[field] = [] as LessonField[];
     }
   }
 
-  if (field === 'word_list') {
+  if (field === 'vocabulary') {
     (ctx.session.data[field] as WordItem[]).push(fileData as WordItem);
   } else {
     (ctx.session.data[field] as LessonField[]).push(fileData as LessonField);

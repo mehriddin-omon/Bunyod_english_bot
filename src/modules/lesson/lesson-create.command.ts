@@ -4,7 +4,7 @@ import { Markup } from 'telegraf';
 import path from 'path';
 import fs from 'fs';
 
-import { WordlistService } from '../wordlist/wordlist.service';
+import { VocabularyService } from '../vocabulary/vocabulary.service';
 import { LessonService } from './lesson.service';
 // import { TestsService } from '../tests/tests.service';
 import {
@@ -18,12 +18,12 @@ export class LessonCreateCommand {
   constructor(
     private readonly botService: BotService,
     private readonly lessonService: LessonService,
-    private readonly wordlistService: WordlistService,
+    private readonly vocabularyService: VocabularyService,
     // private readonly testsService: TestsService,
   ) { }
 
   @UseGuards(AdminGuard)
-  @Hears("➕ Dars qo'shish")
+  @Hears("➕ Dars create")
   async startLessonMenu(@Ctx() ctx: BotContext) {
     // initSession(ctx);
     await this.showLessonMenu(ctx);
@@ -85,11 +85,11 @@ export class LessonCreateCommand {
         }
       }
 
-      if (data.word_list?.length) {
-        for (const word of data.word_list) {
+      if (data.vocabulary?.length) {
+        for (const word of data.vocabulary) {
           try {
             const filePath = path.join('./voices', `${word.english}.mp3`);
-            await this.wordlistService.generateVoice(word.english, './voices');
+            await this.vocabularyService.generateVoice(word.english, './voices');
 
 
             const sent = await ctx.telegram.sendVoice(
@@ -101,7 +101,7 @@ export class LessonCreateCommand {
             word.voice_file_id = sent.voice.file_id;
             word.message_id = sent.message_id.toString(); // 🔐 MUHIM QATOR
           } catch (error: any) {
-            console.error(`❌ WordList yuborishda xatolik: ${word.english}`, error);
+            console.error(`❌ Vocabulary yuborishda xatolik: ${word.english}`, error);
           }
         }
       }
@@ -117,14 +117,14 @@ export class LessonCreateCommand {
     }
   }
 
-  @Hears("🎧 Listening qo'shish")
+  @Hears("🎧 Listening create")
   async awaitingListening(@Ctx() ctx: BotContext) {
     initSession(ctx);
     setAwaiting(ctx, 'listening');
     await ctx.reply("🎧 Audio fayl yuboring");
   }
 
-  @Hears("📖 Reading qo'shish")
+  @Hears("📖 Reading create")
   async awaitingReading(@Ctx() ctx: BotContext) {
     initSession(ctx);
     setAwaiting(ctx, 'reading');
@@ -132,9 +132,9 @@ export class LessonCreateCommand {
   }
 
   @Hears("📚 Vocabulary qo‘shish")
-  async awaitingWordList(@Ctx() ctx: BotContext) {
+  async awaitingVocabulary(@Ctx() ctx: BotContext) {
     initSession(ctx);
-    setAwaiting(ctx, 'word_list');
+    setAwaiting(ctx, 'vocabulary');
     await ctx.reply("📚 Word qo‘shing (format: `english - uzbek`), optional: transcription, example, voice.");
   }
 
@@ -177,7 +177,7 @@ export class LessonCreateCommand {
     await ctx.reply(`✅ Dars statusi "${status}" ga o‘zgartirildi.`);
   }
 
-  // @Hears("❓ Test qo'shish")
+  // @Hears("❓ Test create")
   // async awaitingTest(@Ctx() ctx: BotContext) {
   //   initSession(ctx);
   //   setAwaiting(ctx, 'test');
@@ -211,33 +211,32 @@ export class LessonCreateCommand {
       await this.showLessonMenu(ctx);
     }
 
-    if (awaiting === 'word_list') {
-      const { category, words } = await this.wordlistService.parseWordListText(text);
+    if (awaiting === 'vocabulary') {
+      const { words } = await this.vocabularyService.parseVocabularyText(text);
 
       if (!words.length) {
         await ctx.reply("❌ Format noto‘g‘ri yoki wordlar topilmadi.");
         return;
       }
 
-      if (!ctx.session.data.word_list) {
-        ctx.session.data.word_list = [];
+      if (!ctx.session.data.vocabulary) {
+        ctx.session.data.vocabulary = [];
       }
 
       for (const word of words) {
         const wordItem: WordItem = {
-          type: 'word_list',
+          type: 'vocabulary',
           english: word.english,
           uzbek: word.uzbek,
           transcription: word.transcription,
           order_index: Date.now(),
-          category,
         };
 
-        ctx.session.data.word_list.push(wordItem);
+        ctx.session.data.vocabulary.push(wordItem);
       }
 
       ctx.session.awaiting = null;
-      await ctx.reply(`✅ ${words.length} ta word sessionga saqlandi (category: ${category})`);
+      await ctx.reply(`✅ ${words.length} ta word sessionga saqlandi.`);
       await this.showLessonMenu(ctx);
     }
 
@@ -312,12 +311,12 @@ export class LessonCreateCommand {
       `🎧 Listening: ${audioCount} ta audio, ${videoCount} ta video\n` +
       `📖 Reading: ${data.reading?.length || 0} ta\n` +
       `❓ Test: ${data.test?.length || 0} ta\n` +
-      `📚 Vocabulary: ${data.word_list?.length || 0} ta`,
+      `📚 Vocabulary: ${data.vocabulary?.length || 0} ta`,
       Markup.keyboard([
         ["📌 Dars nomi"],
-        ["🎧 Listening qo'shish", "📖 Reading qo'shish"],
-        ["📓 Grammar "],
-        ["📚 Vocabulary qo'shish", "❓ Test qo'shish"],
+        ["🎧 Listening create", "📖 Reading create"],
+        ["📓 Grammar", "Vocabulary"],
+        ["📚 Test create", " Vocabulary test create"],
         ["✅ Saqlash", "❌ Bekor qilish"],
       ]).resize()
     );

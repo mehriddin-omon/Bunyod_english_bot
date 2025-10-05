@@ -4,12 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Module } from '@nestjs/common';
 import { session } from 'telegraf';
 
-import { BotModule } from './modules/bot/bot.module';
-import { UserModule } from './modules/user/user.module';
-import { LessonModule } from './modules/lesson/lesson.module';
-import { ListeningModule } from './modules/listening/listening.module';
-import { ReadingModule } from './modules/reading/reading.module';
-import { WordlistModule } from './modules/wordlist/wordlist.module';
+import { BotModule, LessonModule, VocabularyModule, UserModule } from './modules';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -57,9 +52,7 @@ const isProd = process.env.NODE_ENV === 'production';
     BotModule,
     LessonModule,
     UserModule,
-    ListeningModule,
-    ReadingModule,
-    WordlistModule,
+    VocabularyModule,
     // TestsModule,
   ],
   providers: [],

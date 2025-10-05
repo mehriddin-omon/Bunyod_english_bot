@@ -1,11 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Message } from 'telegraf/types';
-import { Listening } from '../listening';
-import { Reading } from '../reading';
-import { WordList } from '../wordlist';
-import { LessonField, LessonFileType, LessonStatus, Lesson } from 'src/common';
+import { LessonField, LessonFileType, LessonStatus, Lesson, Vocabulary, Listening, Reading } from 'src/common';
 import { UserService } from '../user/user.service';
 
 @Injectable()
@@ -20,8 +17,8 @@ export class LessonService {
     @InjectRepository(Reading)
     private readonly readingRepo: Repository<Reading>,
 
-    @InjectRepository(WordList)
-    private readonly wordListRepo: Repository<WordList>,
+    @InjectRepository(Vocabulary)
+    private readonly VocabularyRepo: Repository<Vocabulary>,
 
     private readonly userService: UserService,
 
@@ -101,7 +98,7 @@ export class LessonService {
 
     if (Array.isArray(data.word_list)) {
       for (const item of data.word_list) {
-        await this.wordListRepo.save({
+        await this.VocabularyRepo.save({
           lesson: { id: lessonId },
           english: item.english,
           uzbek: item.uzbek,

@@ -2,8 +2,8 @@ import { BaseEntity } from "src/common/core/entitys/base.entity";
 import { Lesson } from "src/modules/lesson";
 import { Column, Entity, ManyToOne } from "typeorm";
 
-@Entity("word_list")
-export class WordList extends BaseEntity {
+@Entity("vocabulary")
+export class Vocabulary extends BaseEntity {
   @Column()
   english: string;
 
@@ -28,6 +28,6 @@ export class WordList extends BaseEntity {
   @Column({ type: "bigint" })
   order_index: number;
 
-  @ManyToOne(() => Lesson, (lesson) => lesson.word_list)
+  @ManyToOne(() => Lesson, (lesson) => lesson.vocabulary, { onDelete: "CASCADE" })
   lesson: Lesson;
 }

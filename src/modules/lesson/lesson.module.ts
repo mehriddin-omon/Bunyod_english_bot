@@ -8,23 +8,23 @@ import { UserModule } from '../user/user.module';
 import { Listening, ListeningModule } from '../listening';
 import { LessonViewCommand } from './lesson-view.command';
 import { Reading } from '../reading';
-import { WordList } from '../wordlist';
-import { WordlistModule } from '../wordlist/wordlist.module';
+import { VocabularyModule } from '../vocabulary/vocabulary.module';
 import { Test } from '../tests';
 import { TestsModule } from '../tests/tests.module';
+import { Vocabulary } from 'src/common';
 
 @Module({
   imports: [
     forwardRef(() => (BotModule)),
     UserModule,
     ListeningModule,
-    WordlistModule,
+    VocabularyModule,
     TestsModule,
     TypeOrmModule.forFeature([
       Lesson,
       Listening,
       Reading,
-      WordList,
+      Vocabulary,
       Test
     ])
   ],

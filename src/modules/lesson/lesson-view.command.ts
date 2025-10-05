@@ -144,7 +144,7 @@ export class LessonViewCommand {
             { label: "🎧 Listening", data: lesson.listening },
             { label: "📖 Reading", data: lesson.reading },
             { label: "📝 Test", data: lesson.test },
-            { label: "📚 Vocabulary", data: lesson.word_list },
+            { label: "📚 Vocabulary", data: lesson.vocabulary },
         ];
 
         const availableSections = sections.filter(section => section.data?.length);
