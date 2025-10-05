@@ -1,6 +1,4 @@
-
-//developda false, productionda true
-const isProd = process.env.NODE_ENV === 'production';
+import { isProd } from "src/config/config";
 
 export const TELEGRAM_CHANNEL_ID = isProd ? '@shamsiddinov_1347' : '@mehriddin_omon';
 export const CHANNEL_URL = isProd ? 'https://t.me/english_with_Shamsiddinov' : 'https://t.me/mehriddin_omon';
