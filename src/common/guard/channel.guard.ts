@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Context as TelegrafContext } from 'telegraf';
-import { CHANNEL_URL, TELEGRAM_CHANNEL_ID } from '../utils/const';
+import { TELEGRAM_GROUP_ID } from '../utils/const';
 
 @Injectable()
 export class ChannelGuard implements CanActivate {
@@ -14,7 +14,7 @@ export class ChannelGuard implements CanActivate {
     }
 
     try {
-      const member = await ctx.telegram.getChatMember(TELEGRAM_CHANNEL_ID, userId);
+      const member = await ctx.telegram.getChatMember(TELEGRAM_GROUP_ID, userId);
 
       if (['creator', 'administrator', 'member'].includes(member.status)) {
         return true;

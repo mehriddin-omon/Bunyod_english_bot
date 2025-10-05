@@ -11,7 +11,6 @@ export class AdminGuard implements CanActivate {
     const userId = ctx.from?.id;
 
     if (!userId) {
-      console.log('ctx.from', ctx.from)
       console.warn('AdminGuard: ctx.from.id yo‘q');
       throw new ForbiddenException('Foydalanuvchi aniqlanmadi');
     }

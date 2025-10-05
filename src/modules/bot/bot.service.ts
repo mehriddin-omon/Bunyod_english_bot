@@ -3,7 +3,7 @@ import { Markup, Telegraf } from 'telegraf';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { UserService } from 'src/modules/user/user.service';
-import { CHANNEL_URL, TELEGRAM_CHANNEL_ID, TEACHER_ID } from 'src/common/utils/const';
+import { GROUP_URL, TELEGRAM_GROUP_ID, TEACHER_ID } from 'src/common/utils/const';
 import { BotContext } from '../../common/utils/bot.context';
 
 @Injectable()
@@ -39,13 +39,15 @@ export class BotService {
       return;
     }
 
-    const isMember = await this.checkChannelMembership(userId);
+    const isMember = await this.checkGroupMembership(userId);
     if (!isMember) {
-      await ctx.reply("❌ Siz hali kanalga a'zo bo'lmadingiz.", {
-        reply_markup: {
-          inline_keyboard: [[{ text: "📢 Kanalga qo'shilish", url: CHANNEL_URL }]],
-        },
-      });
+      await ctx.reply("❌ Siz hali guruhga a'zo bo'lmadingiz.",
+        // {
+        //   reply_markup: {
+        //     inline_keyboard: [[{ text: "📢 Guruhga qo'shilish", url: GROUP_URL }]],
+        //   },
+        // }
+      );
       return;
     }
 
@@ -91,25 +93,34 @@ export class BotService {
 
   private async askToJoinChannel(ctx: BotContext) {
     await ctx.reply(
-      "Assalomu alaykum! Botdan foydalanish uchun kanalga qo'shiling 👇",
+      "Assalomu alaykum! Botdan foydalanish uchun guruhga qo'shiling 👇",
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: "📢 Kanalga qo'shilish", url: CHANNEL_URL }],
+            [{ text: "👥 Guruhga qo'shilish", url: GROUP_URL }],
             [{ text: "✅ Tasdiqlash", callback_data: 'check_membership' }],
           ],
         },
       }
     );
-    return;
   }
 
   async checkChannelMembership(userId: number): Promise<boolean> {
     try {
-      const member = await this.bot.telegram.getChatMember(TELEGRAM_CHANNEL_ID, userId);
+      const member = await this.bot.telegram.getChatMember(TELEGRAM_GROUP_ID, userId);
       return member.status !== 'left' && member.status !== 'kicked';
     } catch (error) {
       this.logger.warn(`Channel check failed for user ${userId}: ${error?.message || error}`);
+      return false;
+    }
+  }
+
+  async checkGroupMembership(userId: number): Promise<boolean> {
+    try {
+      const member = await this.bot.telegram.getChatMember(TELEGRAM_GROUP_ID, userId);
+      return member.status !== 'left' && member.status !== 'kicked';
+    } catch (error) {
+      this.logger.warn(`Group check failed for user ${userId}: ${error?.message || error}`);
       return false;
     }
   }
