@@ -149,7 +149,7 @@ export class LessonService {
   async getLessonWithRelations(id: string): Promise<Lesson | null> {
     return this.lessonRepo.findOne({
       where: { id },
-      relations: ['listening', 'reading', 'test', 'word_list'],
+      relations: ['listening', 'reading', 'test', 'vocabulary'],
     });
   }
 

@@ -75,8 +75,8 @@ export class BotService {
 
   async showTeacherMenu(ctx: BotContext, text: string) {
     await ctx.reply(text, Markup.keyboard([
-      ["➕ Dars qo'shish", "📚 Darslar ro'yxati"],
-      ["📊 Statistika", "⚙️ Sozlamalar"],
+      ["➕ Lesson create", "📚 Lessons list"],
+      ["📊 Statistika", "⚙️ Params"],
     ]).resize());
   }
 
@@ -85,7 +85,7 @@ export class BotService {
     const name = (user) ? user.fullName : 'Foydalanuvchi';
     await ctx.reply(`👋 Hurmatli ${name}, asosiy menudasiz!!`, {
       reply_markup: {
-        keyboard: [["📚 Darslar"], ["ℹ️ Yordam"]],
+        keyboard: [["📚 Lessons"], ["ℹ️ Help"]],
         resize_keyboard: true,
       },
     });

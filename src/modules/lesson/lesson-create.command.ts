@@ -23,7 +23,7 @@ export class LessonCreateCommand {
   ) { }
 
   @UseGuards(AdminGuard)
-  @Hears("➕ Dars create")
+  @Hears("➕ Lesson create")
   async startLessonMenu(@Ctx() ctx: BotContext) {
     // initSession(ctx);
     await this.showLessonMenu(ctx);
@@ -32,15 +32,15 @@ export class LessonCreateCommand {
   @Hears("❌ Bekor qilish")
   async cancelLesson(@Ctx() ctx: BotContext) {
     clearSession(ctx);
-    const text = "❌ Dars qo‘shish bekor qilindi.";
+    const text = "❌ Lesson qo‘shish bekor qilindi.";
     // 🔙 Teacher menyusiga qaytish
     await this.botService.showTeacherMenu(ctx, text);
   }
 
-  @Hears(/^📌 Dars nomi$|^📌 Nomini o‘zgartirish$/)
+  @Hears(/^📌 Lesson name$|^📌 Lesson name update$/)
   async awaitingLessonName(@Ctx() ctx: BotContext) {
     setAwaiting(ctx, 'lesson_name');
-    await ctx.reply("📌 Dars nomini kiriting:");
+    await ctx.reply("📌 Lesson name kiriting:");
   }
 
   @Hears("✅ Saqlash")
@@ -49,7 +49,7 @@ export class LessonCreateCommand {
     assertSession(ctx);
     const data = ctx.session.data;
     if (!data.lesson_name?.content) {
-      await ctx.reply("❌ Dars nomi kiritilmagan.");
+      await ctx.reply("❌ Lesson name kiritilmagan.");
       return;
     }
 
@@ -90,8 +90,6 @@ export class LessonCreateCommand {
           try {
             const filePath = path.join('./voices', `${word.english}.mp3`);
             await this.vocabularyService.generateVoice(word.english, './voices');
-
-
             const sent = await ctx.telegram.sendVoice(
               SAVED_TELEGRAM_CHANNEL_ID,
               { source: fs.createReadStream(filePath) },
@@ -110,7 +108,7 @@ export class LessonCreateCommand {
       await this.lessonService.saveFullLesson(data);
 
       clearSession(ctx);
-      await ctx.reply("✅ Dars va fayllar muvaffaqiyatli saqlandi.");
+      await ctx.reply("✅ Lesson va fayllar muvaffaqiyatli saqlandi.");
     } catch (error) {
       console.error("Saqlashda xatolik:", error);
       await ctx.reply("❌ Saqlashda xatolik yuz berdi.");
@@ -121,7 +119,7 @@ export class LessonCreateCommand {
   async awaitingListening(@Ctx() ctx: BotContext) {
     initSession(ctx);
     setAwaiting(ctx, 'listening');
-    await ctx.reply("🎧 Audio fayl yuboring");
+    await ctx.reply("🎧 Audio yoki video fayl yuboring");
   }
 
   @Hears("📖 Reading create")
@@ -131,11 +129,11 @@ export class LessonCreateCommand {
     await ctx.reply("📖 PDF (document) yoki video fayl yuboring");
   }
 
-  @Hears("📚 Vocabulary qo‘shish")
+  @Hears("📚 Vocabulary create")
   async awaitingVocabulary(@Ctx() ctx: BotContext) {
     initSession(ctx);
     setAwaiting(ctx, 'vocabulary');
-    await ctx.reply("📚 Word qo‘shing (format: `english - uzbek`), optional: transcription, example, voice.");
+    await ctx.reply("📚 Vocabulary format (format: `english - uzbek`), optional: transcription, example, voice.");
   }
 
   @Hears("🔄 Update status")
@@ -143,7 +141,7 @@ export class LessonCreateCommand {
     assertSession(ctx);
 
     await ctx.reply(
-      "🟢 Dars statusini tanlang:",
+      "🟢 Lesson statusini tanlang:",
       Markup.inlineKeyboard([
         [Markup.button.callback("📝 Draft", "status_draft")],
         [Markup.button.callback("✅ Published", "status_published")],
@@ -165,7 +163,6 @@ export class LessonCreateCommand {
     const data = ctx.callbackQuery?.data;
     if (!data?.startsWith('status_')) return;
 
-
     assertSession(ctx);
     ctx.session ??= { data: {}, prevPage: null };
     // Statusni sessionga yozish yoki bazaga o‘zgartirish
@@ -174,7 +171,7 @@ export class LessonCreateCommand {
     await this.lessonService.updateLessonStatus(ctx.session.currentLessonId!, status as any);
 
     await ctx.answerCbQuery(`Status: ${status} tanlandi`);
-    await ctx.reply(`✅ Dars statusi "${status}" ga o‘zgartirildi.`);
+    await ctx.reply(`✅ Lesson statusi "${status}" ga o‘zgartirildi.`);
   }
 
   // @Hears("❓ Test create")
@@ -207,7 +204,7 @@ export class LessonCreateCommand {
         content: text,
       };
       ctx.session.awaiting = null;
-      await ctx.reply(`📌 Dars nomi saqlandi: ${text}`);
+      await ctx.reply(`📌 Lesson name create: ${text}`);
       await this.showLessonMenu(ctx);
     }
 
@@ -236,7 +233,7 @@ export class LessonCreateCommand {
       }
 
       ctx.session.awaiting = null;
-      await ctx.reply(`✅ ${words.length} ta word sessionga saqlandi.`);
+      await ctx.reply(`✅ ${words.length} ta vocabulary sessionga saqlandi.`);
       await this.showLessonMenu(ctx);
     }
 
@@ -306,17 +303,17 @@ export class LessonCreateCommand {
     }).length;
     const videoCount = listening.filter((f: any) => f.type === 'video').length;
     await ctx.reply(
-      `📌 Dars qo‘shish menyusi:\n\n` +
-      `📌 Nomi: ${data.lesson_name?.content || '❌ Yo‘q'}\n` +
-      `🎧 Listening: ${audioCount} ta audio, ${videoCount} ta video\n` +
-      `📖 Reading: ${data.reading?.length || 0} ta\n` +
-      `❓ Test: ${data.test?.length || 0} ta\n` +
-      `📚 Vocabulary: ${data.vocabulary?.length || 0} ta`,
+      `📌 Lesson create menyu:\n\n` +
+      `📌 Name: ${data.lesson_name?.content || '❌ Yo‘q'}\n` +
+      `🎧 Listening: ${audioCount} audio, ${videoCount} video\n` +
+      `📖 Reading: ${data.reading?.length || 0}\n` +
+      `❓ Test: ${data.test?.length || 0}\n` +
+      `📚 Vocabulary: ${data.vocabulary?.length || 0}`,
       Markup.keyboard([
-        ["📌 Dars nomi"],
+        ["📌 Lesson name"],
         ["🎧 Listening create", "📖 Reading create"],
-        ["📓 Grammar", "Vocabulary"],
-        ["📚 Test create", " Vocabulary test create"],
+        ["📓 Grammar create", "Vocabulary create"],
+        ["📚 Grammar Test create", " Vocabulary test create"],
         ["✅ Saqlash", "❌ Bekor qilish"],
       ]).resize()
     );

@@ -5,7 +5,7 @@ import { LessonStatus } from './enum';
 export type LessonFileType = 'text' | 'document' | 'audio' | 'photo' | 'video' | 'voice' | 'unknown';
 
 export interface LessonField {
-  type: LessonFileType;
+  type?: LessonFileType;
   content?: string;
   fileId?: string;
   fileName?: string;
