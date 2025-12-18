@@ -1,3 +1,4 @@
+export * from './auth'
 export * from './lesson'
 export * from './listening'
 export * from './reading'

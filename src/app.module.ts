@@ -3,8 +3,13 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Module } from '@nestjs/common';
 import { session } from 'telegraf';
-
-import { BotModule, LessonModule, VocabularyModule, UserModule } from './modules';
+import {
+  BotModule,
+  LessonModule,
+  VocabularyModule,
+  UserModule,
+  AuthModule
+} from './modules';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -41,7 +46,7 @@ const isProd = process.env.NODE_ENV === 'production';
         port: config.get<number>('DB_PORT', 5432),
         username: config.get<string>('DB_USERNAME', 'postgres'),
         password: config.get<string>('DB_PASSWORD', 'mehriddin'),
-        database: config.get<string>('DB_NAME', 'bunyod_english'),
+        database: config.get<string>('DB_NAME', 'bunyod_tech'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         synchronize: !isProd,
         logging: !isProd,
@@ -49,6 +54,7 @@ const isProd = process.env.NODE_ENV === 'production';
     }),
 
     // 📦 Feature modules
+    AuthModule,
     BotModule,
     LessonModule,
     UserModule,

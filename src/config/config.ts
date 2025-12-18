@@ -10,7 +10,7 @@ export const config = {
     port: Number(process.env.DB_PORT) || 5432,
     username: process.env.DB_USERNAME || 'postgres',
     password: process.env.DB_PASSWORD || 'mehriddin',
-    name: process.env.DB_NAME || 'bunyod_english',
+    name: process.env.DB_NAME || 'bunyod_tech',
     sync: process.env.DB_SYNC === 'true',
   },
 
