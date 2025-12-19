@@ -7,9 +7,10 @@ import {
   BotModule,
   LessonModule,
   VocabularyModule,
-  UserModule,
-  AuthModule
+  UserModule
 } from './modules';
+import { config } from './config';
+import { TELEGRAM_TOKEN } from './common';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -26,9 +27,12 @@ const isProd = process.env.NODE_ENV === 'production';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService): TelegrafModuleOptions => {
-        const token = config.get<string>('TELEGRAM_TOKEN');
+        const token = config.get<string>('NODE_ENV') === 'production'
+          ? config.get<string>('TELEGRAM_BOT_PROD_TOKEN')
+          : config.get<string>('TELEGRAM_BOT_DEMO_TOKEN');
+
         if (!token)
-          throw new Error('Missing TELEGRAM_TOKEN in .env');
+          throw new Error(`Missing ${TELEGRAM_TOKEN} in .env`);
         return {
           token,
           middlewares: [session()],
@@ -40,21 +44,17 @@ const isProd = process.env.NODE_ENV === 'production';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         type: 'postgres',
-        host: config.get<string>('DB_HOST', 'localhost'),
-        port: config.get<number>('DB_PORT', 5432),
-        username: config.get<string>('DB_USERNAME', 'postgres'),
-        password: config.get<string>('DB_PASSWORD', 'mehriddin'),
-        database: config.get<string>('DB_NAME', 'bunyod_tech'),
-        entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: !isProd,
-        logging: !isProd,
+        url: configService.get<string>('DB_URL'),
+        autoLoadEntities: true,
+        synchronize: configService.get<string>('NODE_ENV') === 'development', //
+        // logging: configService.get<string>('NODE_ENV') === 'development' ? ['query', 'error']:['error'], // Enable logging in development})
+        retryAttempts: 3, // Retry connection attempts
       }),
     }),
 
     // 📦 Feature modules
-    AuthModule,
     BotModule,
     LessonModule,
     UserModule,

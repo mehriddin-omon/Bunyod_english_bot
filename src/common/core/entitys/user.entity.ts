@@ -13,6 +13,9 @@ export class User extends BaseEntity{
     @Column({ type: 'varchar', name: 'fullName', nullable: true })
     fullName: string;
 
+    @Column({ type: 'varchar', name: 'password', nullable: true })
+    password: string;
+
     @Column({ type: 'varchar', name: 'role', nullable: true })
     role: 'admin' | 'student' | 'teacher';
 }

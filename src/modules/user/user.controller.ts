@@ -1,15 +1,20 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { LoginDto } from './dto/create-user.dto';
+import { UserService } from './user.service';
 
 @Controller('user')
-export class UserController {
+class UserController {
+	constructor(
+		private readonly userService: UserService,
+	) {}
+
+	@HttpCode(HttpStatus.OK)
 	@Post('login')
-	async login(@Body() body: { username: string; password: string }) {
-		// Login logikasi shu yerda bo'ladi
-		// Hozircha faqat misol uchun
-		if (body.username === 'admin' && body.password === 'admin') {
+	async login(@Body() dto: LoginDto) {
+		if (dto.username === 'mehriddin_amonboyev' && dto.password === 'admin') {
 			return { 
                 message: 'Login successful', 
-                userId: 1 
+                userId: 2123
             };
 		}
 		return { 
@@ -19,9 +24,11 @@ export class UserController {
 	}
 
 	@Post('register')
-	async register(@Body() body: { username: string; password: string }) {
+	async register(@Body() dto: LoginDto) {
 		// Register logikasi shu yerda bo'ladi
 		// Hozircha faqat misol uchun
-		return { message: 'User registered', user: { username: body.username } };
+		return { message: 'User registered', user: { username: dto.username } };
 	}
 }
+
+export { UserController };

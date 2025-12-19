@@ -109,8 +109,8 @@ export class BotService {
     try {
       const member = await this.bot.telegram.getChatMember(TELEGRAM_GROUP_ID, userId);
       return member.status !== 'left' && member.status !== 'kicked';
-    } catch (error) {
-      this.logger.warn(`Channel check failed for user ${userId}: ${error?.message || error}`);
+    } catch (error: any) {
+      this.logger.warn(`Channel check failed for user ${userId}: ${error.message || error}`);
       return false;
     }
   }
@@ -119,8 +119,8 @@ export class BotService {
     try {
       const member = await this.bot.telegram.getChatMember(TELEGRAM_GROUP_ID, userId);
       return member.status !== 'left' && member.status !== 'kicked';
-    } catch (error) {
-      this.logger.warn(`Group check failed for user ${userId}: ${error?.message || error}`);
+    } catch (error: any) {
+      this.logger.warn(`Group check failed for user ${userId}: ${error.message || error}`);
       return false;
     }
   }

@@ -22,7 +22,7 @@ export class ChannelGuard implements CanActivate {
       ctx.state.needMembershipReply = true;
       return false;
       
-    } catch (err) {
+    } catch (err: any) {
       console.error('ChannelGuard xatolik:', err.message);
       await ctx.reply("❌ Kanalga a’zolikni tekshirishda xatolik yuz berdi.");
       return false;
