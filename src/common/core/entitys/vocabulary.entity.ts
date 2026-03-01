@@ -1,20 +1,18 @@
 import { BaseEntity } from "src/common/core/entitys/base.entity";
-import { Lesson } from "src/modules/lesson";
-import { Column, Entity, ManyToOne } from "typeorm";
+import { Lesson } from "./lesson.entity";
+import { Column, Entity, JoinTable, ManyToMany } from "typeorm";
 
-@Entity("vocabulary")
+@Entity("vocabularys")
 export class Vocabulary extends BaseEntity {
-  @Column()
-  english: string;
 
-  @Column()
-  uzbek: string;
-  
-  @Column({ nullable: true })
-  category: string;
+  @Column({ type: 'varchar', name: 'word' })
+  word: string;
 
-  @Column({ type: "bigint" })
-  message_id: string;
+  @Column({ nullable: true, name: 'lang' })
+  lang: string;
+
+  // @Column({ type: "bigint" })
+  // message_id: string;
 
   @Column({ nullable: true })
   voice_file_id: string;
@@ -27,7 +25,22 @@ export class Vocabulary extends BaseEntity {
 
   @Column({ type: "bigint" })
   order_index: number;
+  
+  @ManyToMany(() => Vocabulary)
+  @JoinTable({
+    name: "vocabulary_relations",
+    joinColumn: {
+      name: "vocabulary_id",
+      referencedColumnName: 'id'
+    },
+    inverseJoinColumn: {
+      name: 'translation_id',
+      referencedColumnName: 'id'
+    }
+  })
+  translations: Vocabulary[];
 
-  @ManyToOne(() => Lesson, (lesson) => lesson.vocabulary, { onDelete: "CASCADE" })
-  lesson: Lesson;
+  @ManyToMany(() => Lesson, (lesson) => lesson.vocabulary, { onDelete: "CASCADE" })
+  lesson: Lesson[];
+  
 }

@@ -1,5 +1,5 @@
 import { BaseEntity } from "src/common/core/entitys/base.entity";
-import { Lesson } from "src/modules/lesson";
+import { Lesson } from "./lesson.entity";
 import { Column, Entity, ManyToOne } from "typeorm";
 
 @Entity("reading")

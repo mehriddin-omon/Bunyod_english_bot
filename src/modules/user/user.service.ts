@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { LoginDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from '../../common/core/entitys/user.entity';
-import { TEACHER_ID } from 'src/common/utils/const';
+import { TEACHER_ID } from '@my/common';
+import { User } from 'src/common/core/entitys/user.entity';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UserService {
@@ -38,10 +37,25 @@ export class UserService {
 
   async findByTelegramId(telegramId: number | null | undefined) {
     if (!telegramId) {
-      console.log('User topilmadi' );
       return false;
     }
     const user = await this.userRepository.findOne({ where: { telegramId } })
     return user;
+  }
+
+  async getmyInfo(username: string) {
+    const user = await this.userRepository.findOne(
+      { where: { username } }
+    );
+    return user;
+  }
+
+  async updateMyProfile(id: string, dto: Partial<UpdateUserDto>) {
+    const user = await this.userRepository.findOne({ where: { id } }); // userni topadi
+    if (!user) {
+      throw new Error("User not found");
+    }
+    Object.assign(user, dto); // updateDto'dagi maydonlarni userga biriktiradi
+    return this.userRepository.save(user); // yangilangan userni saqlaydi
   }
 }

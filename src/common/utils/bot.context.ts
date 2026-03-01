@@ -1,6 +1,6 @@
-import { Lesson } from 'src/modules';
 import type { Context } from 'telegraf';
 import { LessonStatus } from './enum';
+import { Lesson } from '../core/entitys/lesson.entity';
 
 export type LessonFileType = 'text' | 'document' | 'audio' | 'photo' | 'video' | 'voice' | 'unknown';
 

@@ -1,4 +1,4 @@
-import { CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import { BeforeInsert, BeforeUpdate, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 
 @Entity()
 export abstract class BaseEntity {
@@ -16,4 +16,9 @@ export abstract class BaseEntity {
         type: 'timestamp'
     })
     update_at: Date;
+
+    @BeforeUpdate()
+    updateTimestamp(){
+        this.update_at = new Date();
+    }
 }

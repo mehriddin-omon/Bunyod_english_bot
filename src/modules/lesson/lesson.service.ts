@@ -2,8 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Message } from 'telegraf/types';
-import { LessonField, LessonFileType, LessonStatus, Lesson, Vocabulary, Listening, Reading } from 'src/common';
+import { LessonField, LessonFileType, LessonStatus } from 'src/common';
+
 import { UserService } from '../user/user.service';
+import { Lesson } from 'src/common/core/entitys/lesson.entity';
+import { Listening } from '../listening';
+import { Reading } from '../reading';
+import { Vocabulary } from 'src/common/core/entitys/vocabulary.entity';
 
 @Injectable()
 export class LessonService {
@@ -96,20 +101,20 @@ export class LessonService {
 
     // 4.word_list fayllarini saqlash 
 
-    if (Array.isArray(data.word_list)) {
-      for (const item of data.word_list) {
-        await this.VocabularyRepo.save({
-          lesson: { id: lessonId },
-          english: item.english,
-          uzbek: item.uzbek,
-          transcription: item.transcription ?? null,
-          voice_file_id: item.voice_file_id ?? null,
-          message_id: item.message_id,
-          order_index: item.order_index,
-          category: item.category ?? null,
-        });
-      }
-    }
+    // if (Array.isArray(data.word_list)) {
+    //   for (const item of data.word_list) {
+    //     await this.VocabularyRepo.save({
+    //       lesson: { id: lessonId },
+    //       english: item.english,
+    //       uzbek: item.uzbek,
+    //       transcription: item.transcription ?? null,
+    //       voice_file_id: item.voice_file_id ?? null,
+    //       message_id: item.message_id,
+    //       order_index: item.order_index,
+    //       category: item.category ?? null,
+    //     });
+    //   }
+    // }
 
     // 5. Test fayllarini saqlash
     // ...

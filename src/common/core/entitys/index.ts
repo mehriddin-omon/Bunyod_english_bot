@@ -1,6 +1,0 @@
-export * from './base.entity';
-export * from './user.entity';
-export * from './lesson.entity';
-export * from './reading.entity';
-export * from './listening.entity';
-export * from './vocabulary.entity';

@@ -40,14 +40,16 @@ if (missingVariables.length > 0) {
 
 export const config: ConfigType = {
   APP_PORT: Number(process.env.APP_PORT),
-  DB_URL: process.env.DB_URL!,
-  NODE_ENV: process.env.NODE_ENV!,
-  TELEGRAM_BOT_DEMO_TOKEN: process.env.TELEGRAM_BOT_DEMO_TOKEN!,
-  TELEGRAM_BOT_PROD_TOKEN: process.env.TELEGRAM_BOT_PROD_TOKEN!,
-  JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET!,
-  JWT_ACCESS_TIME: process.env.JWT_ACCESS_TIME!,
-  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET!,
-  JWT_REFRESH_TIME: process.env.JWT_REFRESH_TIME!,
+  DB_URL: String(process.env.DB_URL),
+  NODE_ENV: String(process.env.NODE_ENV),
+  
+  TELEGRAM_BOT_DEMO_TOKEN: String(process.env.TELEGRAM_BOT_DEMO_TOKEN),
+  TELEGRAM_BOT_PROD_TOKEN: String(process.env.TELEGRAM_BOT_PROD_TOKEN),
+
+  JWT_ACCESS_SECRET: String(process.env.JWT_ACCESS_SECRET),
+  JWT_ACCESS_TIME: String(process.env.JWT_ACCESS_TIME),
+  JWT_REFRESH_SECRET: String(process.env.JWT_REFRESH_SECRET),
+  JWT_REFRESH_TIME: String(process.env.JWT_REFRESH_TIME),
 };
 
 export const corsConfig = {

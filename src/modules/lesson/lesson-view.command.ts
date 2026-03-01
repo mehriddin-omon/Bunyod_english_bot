@@ -285,21 +285,21 @@ export class LessonViewCommand {
             return;
         }
 
-        for (const item of resources) {
-            if (typeof item.message_id === 'string') {
-                try {
-                    await ctx.telegram.copyMessage(
-                        ctx.chat!.id,
-                        SAVED_TELEGRAM_CHANNEL_ID,
-                        parseInt(item.message_id, 10)
-                    );
-                } catch (error) {
-                    console.error(`❌ Fayl yuborishda xatolik (${item.id}):`, error);
-                }
-            } else {
-                console.warn(`⚠️ Fayl channelga saqlanmagan (${item.id})`);
-            }
-        }
+        // for (const item of resources) {
+        //     if (typeof item.message_id === 'string') {
+        //         try {
+        //             await ctx.telegram.copyMessage(
+        //                 ctx.chat!.id,
+        //                 SAVED_TELEGRAM_CHANNEL_ID,
+        //                 parseInt(item.message_id, 10)
+        //             );
+        //         } catch (error) {
+        //             console.error(`❌ Fayl yuborishda xatolik (${item.id}):`, error);
+        //         }
+        //     } else {
+        //         console.warn(`⚠️ Fayl channelga saqlanmagan (${item.id})`);
+        //     }
+        // }
     }
 
     @Hears("🔙 Orqaga")

@@ -1,33 +1,53 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+	Controller,
+	Post, Body, Get,
+	HttpCode, HttpStatus,
+	NotFoundException,  UnauthorizedException,
+	Put,
+	Param
+} from '@nestjs/common';
 import { LoginDto } from './dto/create-user.dto';
 import { UserService } from './user.service';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Controller('user')
 class UserController {
 	constructor(
 		private readonly userService: UserService,
-	) {}
+	) { }
 
 	@HttpCode(HttpStatus.OK)
 	@Post('login')
 	async login(@Body() dto: LoginDto) {
-		if (dto.username === 'mehriddin_amonboyev' && dto.password === 'admin') {
-			return { 
-                message: 'Login successful', 
-                userId: 2123
-            };
+		const user = await this.userService.getmyInfo(dto.username);
+		if (!user) {
+			throw new NotFoundException('User not found');
 		}
-		return { 
-            status: 401,
-            message: 'Invalid credentials' 
-        };
+		if (dto.username === user.username && dto.password === user.password) {
+			return {
+				message: 'Login successful',
+				user
+			};
+		}
+		throw new UnauthorizedException('Invalid credentials');
 	}
 
 	@Post('register')
 	async register(@Body() dto: LoginDto) {
 		// Register logikasi shu yerda bo'ladi
 		// Hozircha faqat misol uchun
-		return { message: 'User registered', user: { username: dto.username } };
+		return { 
+			message: 'User registered', 
+			user: { username: dto.username } };
+	}
+
+	@Put(':id')
+	async updateMyProfile(@Param('id') id: string, @Body() dto: UpdateUserDto){
+		const update = this.userService.updateMyProfile(id, dto);
+		return {
+			message: "Malumot yangilandi",
+			data: update
+		}
 	}
 }
 

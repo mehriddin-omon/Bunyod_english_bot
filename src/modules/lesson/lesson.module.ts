@@ -11,7 +11,8 @@ import { Reading } from '../reading';
 import { VocabularyModule } from '../vocabulary/vocabulary.module';
 import { Test } from '../tests';
 import { TestsModule } from '../tests/tests.module';
-import { Vocabulary } from 'src/common';
+import { Vocabulary } from 'src/common/core/entitys/vocabulary.entity';
+import { LessonController } from './lesson.controller';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { Vocabulary } from 'src/common';
     LessonViewCommand,
     LessonCreateCommand,
   ],
+  controllers: [LessonController],
   exports: [
     LessonService,
     LessonViewCommand,

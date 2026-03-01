@@ -2,14 +2,15 @@ import { TelegrafModule, TelegrafModuleOptions } from 'nestjs-telegraf';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { session } from 'telegraf';
+import { ResponseTransformInterceptor } from '@my/common';
 import {
   BotModule,
   LessonModule,
   VocabularyModule,
   UserModule
 } from './modules';
-import { config } from './config';
 import { TELEGRAM_TOKEN } from './common';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -61,6 +62,11 @@ const isProd = process.env.NODE_ENV === 'production';
     VocabularyModule,
     // TestsModule,
   ],
-  providers: [],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ResponseTransformInterceptor,
+    },
+  ],
 })
 export class AppModule { }
