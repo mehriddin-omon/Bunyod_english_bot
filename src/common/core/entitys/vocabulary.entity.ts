@@ -1,6 +1,6 @@
 import { BaseEntity } from "src/common/core/entitys/base.entity";
 import { Lesson } from "./lesson.entity";
-import { Column, Entity, JoinTable, ManyToMany } from "typeorm";
+import { Column, Entity, JoinColumn, ManyToMany, ManyToOne } from "typeorm";
 
 @Entity("vocabularys")
 export class Vocabulary extends BaseEntity {
@@ -25,22 +25,24 @@ export class Vocabulary extends BaseEntity {
 
   @Column({ type: "bigint" })
   order_index: number;
-  
-  @ManyToMany(() => Vocabulary)
-  @JoinTable({
-    name: "vocabulary_relations",
-    joinColumn: {
-      name: "vocabulary_id",
-      referencedColumnName: 'id'
-    },
-    inverseJoinColumn: {
-      name: 'translation_id',
-      referencedColumnName: 'id'
-    }
-  })
-  translations: Vocabulary[];
 
   @ManyToMany(() => Lesson, (lesson) => lesson.vocabulary, { onDelete: "CASCADE" })
   lesson: Lesson[];
-  
+
+}
+
+@Entity("vocabulary_relations")
+export class VocabularyRelations extends BaseEntity {
+
+  @ManyToOne(() => Vocabulary, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "vocabulary_id" })
+  vocabulary: Vocabulary;
+
+  @ManyToOne(() => Vocabulary, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "translation_id" })
+  translation: Vocabulary;
+
+
+  @Column({ type: "float", default: 0 })
+  difficulty: number;
 }

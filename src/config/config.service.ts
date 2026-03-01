@@ -9,9 +9,9 @@ export type ConfigType = {
   TELEGRAM_BOT_DEMO_TOKEN: string;
   TELEGRAM_BOT_PROD_TOKEN: string;
   JWT_ACCESS_SECRET: string;
-  JWT_ACCESS_TIME: string;
+  JWT_ACCESS_TIME: number;
   JWT_REFRESH_SECRET: string;
-  JWT_REFRESH_TIME: string;
+  JWT_REFRESH_TIME: number;
 };
 
 const requiredVariables = [
@@ -47,9 +47,9 @@ export const config: ConfigType = {
   TELEGRAM_BOT_PROD_TOKEN: String(process.env.TELEGRAM_BOT_PROD_TOKEN),
 
   JWT_ACCESS_SECRET: String(process.env.JWT_ACCESS_SECRET),
-  JWT_ACCESS_TIME: String(process.env.JWT_ACCESS_TIME),
+  JWT_ACCESS_TIME: Number(process.env.JWT_ACCESS_TIME),
   JWT_REFRESH_SECRET: String(process.env.JWT_REFRESH_SECRET),
-  JWT_REFRESH_TIME: String(process.env.JWT_REFRESH_TIME),
+  JWT_REFRESH_TIME: Number(process.env.JWT_REFRESH_TIME),
 };
 
 export const corsConfig = {

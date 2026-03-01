@@ -34,8 +34,9 @@ class UserController {
 
 	@Post('register')
 	async register(@Body() dto: LoginDto) {
-		// Register logikasi shu yerda bo'ladi
-		// Hozircha faqat misol uchun
+		const user = await this.register(dto);
+		if(!user)
+			throw new Error('User topilmadi')
 		return { 
 			message: 'User registered', 
 			user: { username: dto.username } };
