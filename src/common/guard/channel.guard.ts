@@ -14,14 +14,16 @@ export class ChannelGuard implements CanActivate {
     }
 
     try {
+      // userning telegram guruhga a'zoligini tekshirish funksiyasi 
       const member = await ctx.telegram.getChatMember(TELEGRAM_GROUP_ID, userId);
 
-      if (['creator', 'administrator', 'member'].includes(member.status)) {
+      const creator = ['creator', 'administrator', 'member'];
+      if (creator.includes(member.status)) {
         return true;
       }
       ctx.state.needMembershipReply = true;
       return false;
-      
+
     } catch (err: any) {
       console.error('ChannelGuard xatolik:', err.message);
       await ctx.reply("❌ Kanalga a’zolikni tekshirishda xatolik yuz berdi.");

@@ -6,6 +6,7 @@ import { Context as TelegrafContext } from 'telegraf';
 export class AdminGuard implements CanActivate {
   constructor(private readonly userService: UserService) {}
 
+  // Telegram konteksti uchun (qoladi)
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const ctx = context.switchToHttp().getRequest<TelegrafContext>();
     const userId = ctx.from?.id;
@@ -23,6 +24,21 @@ export class AdminGuard implements CanActivate {
 
     if (user.role !== 'admin') {
       console.warn(`AdminGuard: user admin emas — role: ${user.role}`);
+      throw new ForbiddenException('Sizda admin huquqi yo‘q');
+    }
+    return true;
+  }
+
+  // 🔑 Yangi funksiya: HTTP request uchun
+  async checkHttpAdmin(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const user = request.user; // JWT strategy orqali keladi
+
+    if (!user) {
+      throw new ForbiddenException('Foydalanuvchi aniqlanmadi');
+    }
+
+    if (user.role !== 'admin') {
       throw new ForbiddenException('Sizda admin huquqi yo‘q');
     }
 

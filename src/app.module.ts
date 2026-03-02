@@ -4,7 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { session } from 'telegraf';
-import { ResponseTransformInterceptor } from '@my/common';
+import { GuardModule, ResponseTransformInterceptor } from '@my/common';
 import {
   BotModule,
   LessonModule,
@@ -64,6 +64,7 @@ const isProd = process.env.NODE_ENV === 'production';
     LessonModule,
     UserModule,
     VocabularyModule,
+    GuardModule,
     // TestsModule,
   ],
   providers: [

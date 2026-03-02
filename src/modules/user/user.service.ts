@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { TEACHER_ID } from '@my/common';
+import { Role, TEACHER_ID } from '@my/common';
 import { User } from 'src/common/core/entitys/user.entity';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -20,7 +20,7 @@ export class UserService {
         telegramId: tgUser.id,
         username: tgUser.username,
         fullName: `${tgUser.first_name ?? ''} ${tgUser.last_name ?? ''}`,
-        role: TEACHER_ID.includes(tgUser.id) ? 'admin' : 'student',  //ustozni aniqlash
+        role: TEACHER_ID.includes(tgUser.id) ? Role.admin : Role.student,  //ustozni aniqlash
       });
     } else {
       // agar username yoki ism o‘zgargan bo‘lsa yangilash

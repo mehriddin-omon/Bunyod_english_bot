@@ -1,11 +1,13 @@
-import { Body, Controller, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Param, Patch, UseGuards } from '@nestjs/common';
 import { AdminService } from './admin.service';
-import { Role } from '@my/common';
+import { GuardService, Role, RolesGuard } from '@my/common';
+import { Roles } from 'src/common/decorators/roles.decorator';
 
 @Controller('admin')
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
+  @Roles('admin')
   @Patch('user/:id/role')
   async updateUserRole(
     @Param('id') id: string,
