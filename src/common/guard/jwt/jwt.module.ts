@@ -4,6 +4,7 @@ import { config } from '@my/config';
 import { GuardService } from './jwt-auth.guard';
 import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from '../roles.guard';
+import { TokenService } from './jwt.service';
 
 @Module({
     imports: [
@@ -19,6 +20,7 @@ import { RolesGuard } from '../roles.guard';
     ],
     providers: [
         GuardService,
+        TokenService,
         {
             provide: APP_GUARD,
             useClass: GuardService
@@ -28,6 +30,6 @@ import { RolesGuard } from '../roles.guard';
             useClass: RolesGuard
         }
     ],
-    exports: [JwtModule],
+    exports: [JwtModule, TokenService],
 })
 export class GuardModule { }
