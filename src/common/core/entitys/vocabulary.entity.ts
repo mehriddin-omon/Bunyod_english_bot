@@ -3,7 +3,7 @@ import { Lesson } from "./lesson.entity";
 import { Column, Entity, JoinColumn, ManyToMany, ManyToOne } from "typeorm";
 
 @Entity("vocabularys")
-export class Vocabulary extends BaseEntity {
+class Vocabulary extends BaseEntity {
 
   @Column({ type: 'varchar', name: 'word' })
   word: string;
@@ -11,19 +11,13 @@ export class Vocabulary extends BaseEntity {
   @Column({ nullable: true, name: 'lang' })
   lang: string;
 
-  // @Column({ type: "bigint" })
-  // message_id: string;
-
   @Column({ nullable: true })
   voice_file_id: string;
 
   @Column({ nullable: true })
-  transcription: string;
-
-  @Column({ nullable: true })
   example: string;
 
-  @Column({ type: "bigint" })
+  @Column({ type: "bigint", default: 0 })
   order_index: number;
 
   @ManyToMany(() => Lesson, (lesson) => lesson.vocabulary, { onDelete: "CASCADE" })
@@ -32,7 +26,7 @@ export class Vocabulary extends BaseEntity {
 }
 
 @Entity("vocabulary_relations")
-export class VocabularyRelations extends BaseEntity {
+class VocabularyRelations extends BaseEntity {
 
   @ManyToOne(() => Vocabulary, { onDelete: "CASCADE" })
   @JoinColumn({ name: "vocabulary_id" })
@@ -46,3 +40,6 @@ export class VocabularyRelations extends BaseEntity {
   @Column({ type: "float", default: 0 })
   difficulty: number;
 }
+
+
+export { Vocabulary, VocabularyRelations };

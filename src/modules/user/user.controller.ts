@@ -32,17 +32,6 @@ export class UserController {
 		// }
 		throw new UnauthorizedException('Invalid credentials');
 	}
-	// @Public()
-	// @Post('register')
-	// async register(@Body() dto: LoginDto) {
-	// 	const user = await this.register(dto);
-	// 	if (!user)
-	// 		throw new Error('User topilmadi')
-	// 	return {
-	// 		message: 'User registered',
-	// 		user: { username: dto.username }
-	// 	};
-	// }
 
 	@Put(':id')
 	async updateMyProfile(@Param('id') id: string, @Body() dto: UpdateUserDto) {
