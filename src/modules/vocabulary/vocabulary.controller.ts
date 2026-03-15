@@ -24,5 +24,18 @@ export class VocabularyController {
   async getAll() {
     return this.vocabularyService.findAllWithTranslations();
   }
+  @Public()
+  @Get('findVocabularyPairs')
+  async getFindVocabularyPairs() {
+    return this.vocabularyService.findVocabularyPairs();
+  }
+  @Public()
+  @Get('generateVocabularyQuiz')
+  async getgenerateVocabularyQuiz() {
+    return this.vocabularyService.generateVocabularyQuiz();
+  }
+
+  
+
 
 }

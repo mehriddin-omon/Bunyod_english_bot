@@ -184,4 +184,55 @@ export class VocabularyService {
             .orderBy('v.order_index', 'ASC')
             .getMany();
     }
+    async findVocabularyPairs() {
+        return this.vocabularyRepository
+            .createQueryBuilder('v')
+            .innerJoin(VocabularyRelations, 'vr', 'vr.vocabulary_id = v.id')
+            .innerJoin('vr.translation', 't')
+            .select([
+                'vr.id AS id',
+                'v.id AS vocabulary_id',
+                'v.word AS vocabulary_word',
+                't.id AS translation_id',
+                't.word AS translation_word'
+            ])
+            .orderBy('v.id', 'ASC')
+            .getRawMany();
+    }
+
+    async generateVocabularyQuiz() {
+        const pairs = await this.findVocabularyPairs();
+
+        const questions = pairs.map(pair => {
+            // Vocabulary uchun barcha tarjimalarni topamiz
+            const translationsForWord = pairs
+                .filter(p => p.vocabulary_id === pair.vocabulary_id)
+                .map(p => p.translation_word);
+
+            // To‘g‘ri javob sifatida random bitta tarjima tanlaymiz
+            const correct = translationsForWord[Math.floor(Math.random() * translationsForWord.length)];
+
+            // Boshqa so‘zlardan noto‘g‘ri variantlar
+            const otherTranslations = pairs
+                .filter(p => p.vocabulary_id !== pair.vocabulary_id)
+                .map(p => p.translation_word);
+
+            const wrongOptions = otherTranslations
+                .sort(() => 0.5 - Math.random())
+                .slice(0, 3);
+
+            const options = [correct, ...wrongOptions].sort(() => 0.5 - Math.random());
+            const vocabulary_relation_id = pair.id
+            return {
+                vocabulary_relation_id,
+                question: `"${pair.vocabulary_word}" so‘zining tarjimasi qaysi?`,
+                options,
+                correct,
+                lang: 'en'
+            };
+        });
+
+        return questions;
+    }
+
 }

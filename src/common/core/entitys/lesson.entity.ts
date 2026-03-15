@@ -8,6 +8,7 @@ import { Test } from './test.entity';
 
 @Entity({ name: 'lessons' })
 export class Lesson extends BaseEntity {
+  
   @Column({
     type: 'varchar',
     name: 'lesson_name'

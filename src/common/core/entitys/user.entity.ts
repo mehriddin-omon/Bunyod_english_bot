@@ -1,6 +1,7 @@
-import { Column, Entity } from "typeorm";
+import { Column, Entity, OneToMany } from "typeorm";
 import { BaseEntity } from "./base.entity";
 import { Role } from "src/common/utils";
+import { UserVocabularyStats } from "./user-vocabulary-stats.entity";
 
 @Entity({ name: 'users' })
 export class User extends BaseEntity {
@@ -22,4 +23,6 @@ export class User extends BaseEntity {
 
     @Column({ type: 'float', name: 'vocabulary_rating', default: 0 })
     vocabulary_rating: number;
+
+    @OneToMany(()=> UserVocabularyStats, (vocabulary))
 }

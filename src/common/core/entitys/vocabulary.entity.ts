@@ -36,7 +36,6 @@ class VocabularyRelations extends BaseEntity {
   @JoinColumn({ name: "translation_id" })
   translation: Vocabulary;
 
-
   @Column({ type: "float", default: 0 })
   difficulty: number;
 }
