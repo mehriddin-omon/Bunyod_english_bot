@@ -1,6 +1,6 @@
 import { Repository } from 'typeorm';
-import { UserVocabularyStats } from 'src/common/core/entitys/user-vocabulary-stats.entity';
 import { User } from 'src/common/core/entitys/user.entity';
+import { UserVocabularyStats } from 'src/common/core/entitys/user-vocabulary-stats.entity';
 import { VocabularyRelations } from 'src/common/core/entitys/vocabulary.entity';
 
 export class VocabularyStatsService {

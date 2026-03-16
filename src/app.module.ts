@@ -14,6 +14,7 @@ import {
 } from './modules';
 import { TELEGRAM_TOKEN } from './common';
 import { AdminModule } from './modules/admin';
+import { VocabularyStatsModule } from './modules/results/result.module';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -64,6 +65,7 @@ const isProd = process.env.NODE_ENV === 'production';
     LessonModule,
     UserModule,
     VocabularyModule,
+    VocabularyStatsModule,
     GuardModule,
     // TestsModule,
   ],
