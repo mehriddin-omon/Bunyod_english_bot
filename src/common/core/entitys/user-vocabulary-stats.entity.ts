@@ -4,12 +4,9 @@ import { User } from "./user.entity";
 import { VocabularyRelations } from "./vocabulary.entity";
 
 
+// user-vocabulary-stats.entity.ts
 @Entity("uservocabularystats")
 class UserVocabularyStats extends BaseEntity {
-
-    @Column({ type: 'varchar', name: 'word' })
-    user_id: string;
-
     @Column({ nullable: true, name: 'lang', default: 'en' })
     lang: string;
 
@@ -22,12 +19,11 @@ class UserVocabularyStats extends BaseEntity {
     @Column({ type: "bigint", default: 0 })
     last_attempts: number;
 
-    @ManyToOne(() => User, (User) => User.id, { onDelete: "CASCADE" })
-    userId: User[];
+    @ManyToOne(() => User, (user) => user.vocabularyStats, { onDelete: "CASCADE" })
+    user: User;
 
     @ManyToOne(() => VocabularyRelations, (relation) => relation.id)
-    vocabulary_relation_id: VocabularyRelations[];
+    vocabularyRelation: VocabularyRelations;
 }
-
 
 export { UserVocabularyStats };

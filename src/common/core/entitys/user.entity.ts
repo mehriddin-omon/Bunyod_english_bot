@@ -3,9 +3,9 @@ import { BaseEntity } from "./base.entity";
 import { Role } from "src/common/utils";
 import { UserVocabularyStats } from "./user-vocabulary-stats.entity";
 
+// user.entity.ts
 @Entity({ name: 'users' })
 export class User extends BaseEntity {
-
     @Column({ type: 'varchar', name: 'username' })
     username: string;
 
@@ -24,5 +24,6 @@ export class User extends BaseEntity {
     @Column({ type: 'float', name: 'vocabulary_rating', default: 0 })
     vocabulary_rating: number;
 
-    @OneToMany(()=> UserVocabularyStats, (vocabulary))
+    @OneToMany(() => UserVocabularyStats, (vocabularyStats) => vocabularyStats.user)
+    vocabularyStats: UserVocabularyStats[];
 }

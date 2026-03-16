@@ -1,5 +1,7 @@
 import { Repository } from 'typeorm';
 import { UserVocabularyStats } from 'src/common/core/entitys/user-vocabulary-stats.entity';
+import { User } from 'src/common/core/entitys/user.entity';
+import { VocabularyRelations } from 'src/common/core/entitys/vocabulary.entity';
 
 export class VocabularyStatsService {
   constructor(
@@ -7,25 +9,30 @@ export class VocabularyStatsService {
   ) {}
 
   async insertUserVocabularyStat(
-    userId: string,
-    vocabularyRelationId: string,
+    user: User,
+    vocabularyRelation: VocabularyRelations,
     lang: string,
     isCorrect: boolean,
   ) {
     // Avval mavjud yozuvni tekshiramiz
     let stat = await this.statsRepository.findOne({
-      where: { user_id: userId, vocabulary_relation_id: vocabularyRelationId, lang },
+      where: {
+        user: { id: user.id },
+        vocabularyRelation: { id: vocabularyRelation.id },
+        lang,
+      },
+      relations: ['user', 'vocabularyRelation'],
     });
 
     if (!stat) {
       // Agar yozuv bo‘lmasa, yangisini yaratamiz
       stat = this.statsRepository.create({
-        user_id: userId,
-        vocabulary_relation_id: vocabularyRelationId,
+        user,
+        vocabularyRelation,
         lang,
         attempts: 0,
         wrong_attempts: 0,
-        last_attempt: new Date(),
+        last_attempts: Date.now(),
       });
     }
 
@@ -34,7 +41,7 @@ export class VocabularyStatsService {
     if (!isCorrect) {
       stat.wrong_attempts += 1;
     }
-    stat.last_attempt = new Date();
+    stat.last_attempts = Date.now();
 
     return this.statsRepository.save(stat);
   }
