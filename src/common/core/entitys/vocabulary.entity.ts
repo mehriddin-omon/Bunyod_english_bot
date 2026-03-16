@@ -36,9 +36,28 @@ class VocabularyRelations extends BaseEntity {
   @JoinColumn({ name: "translation_id" })
   translation: Vocabulary;
 
+  @Column({
+    type: "bigint",
+    default: 0,
+    transformer: {
+      to: (value: number) => value,
+      from: (value: string) => Number(value),
+    },
+  })
+  attempts: number;
+
+  @Column({
+    type: "bigint",
+    default: 0,
+    transformer: {
+      to: (value: number) => value,
+      from: (value: string) => Number(value),
+    },
+  })
+  wrong_attempts: number;
+
   @Column({ type: "float", default: 0 })
   difficulty: number;
 }
-
 
 export { Vocabulary, VocabularyRelations };

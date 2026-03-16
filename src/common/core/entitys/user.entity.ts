@@ -24,6 +24,6 @@ export class User extends BaseEntity {
     @Column({ type: 'float', name: 'vocabulary_rating', default: 0 })
     vocabulary_rating: number;
 
-    @OneToMany(() => UserVocabularyStats, (vocabularyStats) => vocabularyStats.user)
-    vocabularyStats: UserVocabularyStats[];
+    @OneToMany(() => UserVocabularyStats, (vocabulary_stats) => vocabulary_stats.user)
+    vocabulary_stats: UserVocabularyStats[];
 }

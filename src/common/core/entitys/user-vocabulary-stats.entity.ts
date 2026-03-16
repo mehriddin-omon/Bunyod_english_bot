@@ -16,14 +16,12 @@ class UserVocabularyStats extends BaseEntity {
     @Column({ nullable: true })
     wrong_attempts: number;
 
-    @Column({ type: "bigint", default: 0 })
-    last_attempts: number;
-
-    @ManyToOne(() => User, (user) => user.vocabularyStats, { onDelete: "CASCADE" })
+    // @Column({name: 'user_id',})
+    @ManyToOne(() => User, (user) => user.vocabulary_stats, { onDelete: "CASCADE" })
     user: User;
 
     @ManyToOne(() => VocabularyRelations, (relation) => relation.id)
-    vocabularyRelation: VocabularyRelations;
+    vocabulary_relation: VocabularyRelations;
 }
 
 export { UserVocabularyStats };

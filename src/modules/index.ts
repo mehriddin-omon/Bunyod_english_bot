@@ -6,3 +6,4 @@ export * from './tests'
 export * from './vocabulary'
 export * from './user';
 export * from './bot'
+export * from './results'

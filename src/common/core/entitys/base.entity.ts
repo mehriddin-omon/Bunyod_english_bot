@@ -13,18 +13,18 @@ export abstract class BaseEntity {
 
     @CreateDateColumn({
         name: 'created_at',
-        type: 'timestamp'
+        type: 'timestamptz'
     })
     created_at: Date;
 
     @UpdateDateColumn({
         name: 'update_at',
-        type: 'timestamp'
+        type: 'timestamptz'
     })
     update_at: Date;
 
-    @BeforeUpdate()
-    updateTimestamp() {
-        this.update_at = new Date();
-    }
+    // @BeforeUpdate()
+    // updateTimestamp() {
+    //     this.update_at = new Date();
+    // }
 }
