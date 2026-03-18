@@ -8,7 +8,7 @@ import { Test } from './test.entity';
 
 @Entity({ name: 'lessons' })
 export class Lesson extends BaseEntity {
-  
+
   @Column({
     type: 'varchar',
     name: 'lesson_name'
@@ -23,14 +23,14 @@ export class Lesson extends BaseEntity {
   })
   status: LessonStatus;
 
-  @ManyToMany(() => Vocabulary, (vocabulary) => vocabulary.lesson)
+  @ManyToMany(() => Vocabulary, (vocabulary) => vocabulary.lesson, { cascade: true, onDelete: "CASCADE" })
   @JoinTable({
     name: "lesson_vocabulary",
     joinColumn: { name: "lesson_id", referencedColumnName: "id" },
     inverseJoinColumn: { name: "vocabulary_id", referencedColumnName: "id" },
   })
   vocabulary: Vocabulary[];
-  
+
   @OneToMany(() => Listening, (listening) => listening.lesson)
   listening: Listening[];
 

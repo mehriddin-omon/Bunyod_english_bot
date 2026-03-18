@@ -15,4 +15,8 @@ export class CreateVocabularyDto {
     @IsOptional()
     @IsString()
     example?: string;
+
+    @IsOptional()
+    @IsString()
+    lesson_id?: string;
 }

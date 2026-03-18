@@ -2,11 +2,12 @@ import * as gTTS from 'google-tts-api';
 import * as path from 'path';
 import * as fs from 'fs';
 import fetch from 'node-fetch';
-import { Repository } from 'typeorm';
-import { Injectable } from '@nestjs/common';
+import { In, Repository } from 'typeorm';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CreateVocabularyDto } from './dto/create-vocabulary.dto';
 import { Vocabulary, VocabularyRelations } from 'src/common/core/entitys/vocabulary.entity';
+import { Lesson } from 'src/common/core/entitys/lesson.entity';
 
 @Injectable()
 export class VocabularyService {
@@ -16,6 +17,9 @@ export class VocabularyService {
 
         @InjectRepository(VocabularyRelations)
         private readonly relationRepository: Repository<VocabularyRelations>,
+
+        @InjectRepository(Lesson)
+        private readonly lessonRepository: Repository<Lesson>,
     ) { }
 
     async generateVoice(word: string, outputDir: string) {
@@ -147,21 +151,36 @@ export class VocabularyService {
         return vocab;
     }
 
-    async importFromText(rawText: string) {
+    async importFromText(rawText: string, lesson_id?: string) {
         const { words } = await this.parseVocabularyText(rawText);
         const results: Vocabulary[] = [];
 
         for (const w of words) {
-            // Har bir so‘z uchun CreateVocabularyDto tuzamiz
             const dto: CreateVocabularyDto = {
                 word: w.english,
                 lang: 'en',
-                example: w.transcription,   // hozircha bo‘sh
-                translation: w.uzbek,       // tarjima matndan olinadi
+                example: w.transcription,
+                translation: w.uzbek,
             };
 
             // mavjud create funksiyasidan foydalanamiz
             const savedWord = await this.create(dto);
+
+            // agar lessonId berilgan bo‘lsa, Many-to-Many bog‘lash
+            if (lesson_id) {
+                // Lessonni topamiz
+                const lesson = await this.lessonRepository.findOne({
+                    where: { id: lesson_id },
+                    relations: ['vocabulary'],
+                });
+
+                if (lesson) {
+                    // yangi so‘zni lesson.vocabulary arrayiga qo‘shamiz
+                    lesson.vocabulary.push(savedWord);
+                    await this.lessonRepository.save(lesson);
+                }
+            }
+
             results.push(savedWord);
         }
 
@@ -233,6 +252,19 @@ export class VocabularyService {
         });
 
         return questions;
+    }
+
+    async findByLessonId(lessonId: string): Promise<Vocabulary[]> {
+        const lesson = await this.lessonRepository.findOne({
+            where: { id: lessonId },
+            relations: ['vocabulary'],
+        });
+
+        if (!lesson) {
+            throw new NotFoundException(`Lesson with id ${lessonId} not found`);
+        }
+
+        return lesson.vocabulary;
     }
 
 }

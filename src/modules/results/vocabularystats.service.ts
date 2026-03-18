@@ -18,7 +18,7 @@ export class VocabularyStatsService {
 
   ) { }
 
-  async insertUserVocabularyStat(dto: CreateUserVocabularyStatsDto) {
+  async insertUserVocabularyStats(dto: CreateUserVocabularyStatsDto) {
     const user = await this.userRepository.findOne({ where: { id: dto.user_id } });
     const vocabulary_relation = await this.vocabularyRelationsRepository.findOne({
       where: { id: dto.vocabulary_relation_id },

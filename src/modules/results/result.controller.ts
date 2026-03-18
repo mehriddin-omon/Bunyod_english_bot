@@ -12,6 +12,6 @@ export class ResultController {
     @Public()
     @Post('create')
     async create(@Body() dto: CreateUserVocabularyStatsDto){
-        return await this.vocabularyStatsService.insertUserVocabularyStat(dto)
+        return await this.vocabularyStatsService.insertUserVocabularyStats(dto)
     }
 }

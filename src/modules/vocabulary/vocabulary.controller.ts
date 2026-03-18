@@ -15,8 +15,11 @@ export class VocabularyController {
 
   @Public()
   @Post('import-text')
-  async import_text(@Body('text') text: string) {
-    return await this.vocabularyService.importFromText(text)
+  async import_text(
+    @Body('text') text: string,
+    @Body('lesson_id') lessonId?: string,
+  ) {
+    return await this.vocabularyService.importFromText(text, lessonId);
   }
 
   @Public()
@@ -34,8 +37,5 @@ export class VocabularyController {
   async getgenerateVocabularyQuiz() {
     return this.vocabularyService.generateVocabularyQuiz();
   }
-
-  
-
 
 }

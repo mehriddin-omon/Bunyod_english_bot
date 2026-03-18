@@ -1,6 +1,6 @@
 import { Body, Controller, Param, Patch, UseGuards } from '@nestjs/common';
 import { AdminService } from './admin.service';
-import { GuardService, Role, RolesGuard } from '@my/common';
+import { Role } from '@my/common';
 import { Roles } from 'src/common/decorators/roles.decorator';
 
 @Controller('admin')

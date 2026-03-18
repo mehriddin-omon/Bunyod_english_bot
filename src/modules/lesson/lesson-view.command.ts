@@ -18,7 +18,7 @@ export class LessonViewCommand {
 
     @Hears("📚 Lessons list")
     async showTeacherLessons(@Ctx() ctx: BotContext) {
-        const lessons = await this.lessonService.getAllLessons(ctx.from?.id!);
+        const lessons = await this.lessonService.getAllLessonsByTelegram(ctx.from?.id!);
         if (!lessons.length) {
             await ctx.reply("📚 Sorry Lessons Not found.");
             return;
@@ -51,7 +51,7 @@ export class LessonViewCommand {
             lessons: [],
         };
         if (!lessons || !lessons.length) {
-            lessons = await this.lessonService.getAllLessons(ctx.from?.id!);
+            lessons = await this.lessonService.getAllLessonsByTelegram(ctx.from?.id!);
             ctx.session.lessons = lessons;
         }
         if (!lessonName) {
@@ -164,7 +164,7 @@ export class LessonViewCommand {
     // Student menu
     @Hears("📚 Lessons")
     async showLessons(@Ctx() ctx: BotContext) {
-        const lessons = await this.lessonService.getAllLessons(ctx.from?.id!);
+        const lessons = await this.lessonService.getAllLessonsByTelegram(ctx.from?.id!);
         if (!lessons.length) {
             await ctx.reply("📚 Sorry Lessons not found");
             return;
@@ -204,7 +204,7 @@ export class LessonViewCommand {
         initSession(ctx);
         assertSession(ctx);
         ctx.session.prevPage = 'lessonDetail';
-        const lessons = ctx.session?.lessons ?? await this.lessonService.getAllLessons(ctx.from?.id!);
+        const lessons = ctx.session?.lessons ?? await this.lessonService.getAllLessonsByTelegram(ctx.from?.id!);
         const baseLesson = lessons[unitNumber - 1];
 
         if (!baseLesson) {

@@ -126,8 +126,8 @@ export class LessonService {
   /**
    * Barcha darslarni olish
    */
-  async getAllLessons(userId: number): Promise<Lesson[]> {
-    const role = await this.userService.getRole(userId);
+  async getAllLessonsByTelegram(user_id: number): Promise<Lesson[]> {
+    const role = await this.userService.getRole(user_id);
     if (role === 'admin' || role === 'teacher') {
       return this.lessonRepo.find({
         order: { created_at: 'ASC' },      //  'ASC' — "ascending" (o‘sish) tartib, ya'ni eng eski darslar ro‘yxat boshida bo‘ladi.
@@ -139,6 +139,12 @@ export class LessonService {
       order: { created_at: 'ASC' },      //  'ASC' — "ascending" (o‘sish) tartib, ya'ni eng eski darslar ro‘yxat boshida bo‘ladi.
       // order: { created_at: 'DESC' },  //  'DESC' — "descending" (kamayish) tartib, ya'ni eng yangi darslar ro‘yxat boshida bo‘ladi.
     });
+  }
+
+  async getAllLessons(): Promise<Lesson[]> {
+    return this.lessonRepo.find({
+      order: { created_at: 'ASC' }
+    })
   }
 
   /**
