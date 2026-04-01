@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { Message } from 'telegraf/types';
 import { LessonField, LessonFileType, LessonStatus } from 'src/common';
 
@@ -9,6 +9,7 @@ import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { Listening } from '../listening';
 import { Reading } from '../reading';
 import { Vocabulary } from 'src/common/core/entitys/vocabulary.entity';
+import { CreateLessonDto, UpdateLessonDto } from './dto/lesson.dto';
 
 @Injectable()
 export class LessonService {
@@ -120,6 +121,43 @@ export class LessonService {
     // ...
 
     return savedLesson;
+  }
+
+
+  async createLesson(dto: CreateLessonDto): Promise<Lesson> {
+    const existname = await this.lessonRepo.findOne({
+      where: {
+        lesson_name: dto.lesson_name
+      }
+    })
+    if (existname)
+      throw new BadRequestException("Lesson name already exsist");
+
+    const lesson = this.lessonRepo.create({
+      lesson_name: dto.lesson_name
+    });
+    return await this.lessonRepo.save(lesson)
+  }
+
+  async updateLesson(dto: UpdateLessonDto): Promise<Lesson> {
+    const lesson = await this.lessonRepo.findOne({
+      where: { id: dto.id }
+    })
+    if (!lesson)
+      throw new BadRequestException("Lesson not found");
+
+    const existname = await this.lessonRepo.findOne({
+      where: {
+        lesson_name: dto.lesson_name,
+        id: Not(dto.id) // O'zini o'zi tekshirishdan chiqarish
+      }
+    })
+    if (existname)
+      throw new BadRequestException("Lesson name already exsist");
+
+    lesson.lesson_name = dto.lesson_name;
+    lesson.status = dto.status;
+    return await this.lessonRepo.save(lesson);
   }
 
 

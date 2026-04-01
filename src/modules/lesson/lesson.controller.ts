@@ -1,5 +1,5 @@
 
-import { Controller, Post, Body, UseInterceptors, UploadedFiles, Get, Param } from '@nestjs/common';
+import { Controller, Post, Body, UseInterceptors, UploadedFiles, Get, Param, Put } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 
@@ -8,6 +8,7 @@ import { Public } from 'src/common/decorators/jwt-public.decorator';
 import { VocabularyService } from '../vocabulary';
 import { Role } from '@my/common';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { CreateLessonDto, UpdateLessonDto } from './dto/lesson.dto';
 
 @Controller('lesson')
 class LessonController {
@@ -18,42 +19,28 @@ class LessonController {
         private readonly vocabularyService: VocabularyService
     ) { }
 
-    @Public()
+    @Roles(Role.teacher, Role.admin)
     @Post('create')
-    @UseInterceptors(
-        FileFieldsInterceptor([
-            { name: 'files', maxCount: 20 }, // max 20 files, adjust as needed
-        ])
-    )
-    async createLesson(
-        @Body() lessonData: any,
-        @UploadedFiles() files: { files?: any[] } = {}
-    ) {
-        console.log('lissons', lessonData);
-
-        if (lessonData.sections && Array.isArray(lessonData.sections) && files && Array.isArray(files.files)) {
-            let fileIdx = 0;
-            lessonData.sections = lessonData.sections.map((section: any) => {
-                if (section.file !== null && files.files && files.files[fileIdx]) {
-                    section.file = files.files[fileIdx].path;
-                    fileIdx++;
-                }
-                return section;
-            });
-        }
-        return this.lessonService.saveFullLesson(lessonData);
+    async createLesson(@Body() dto: CreateLessonDto) {
+        return await this.lessonService.createLesson(dto)
     }
 
-    @Roles(Role.admin, Role.student)
+    @Roles(Role.admin, Role.student, Role.teacher)
     @Get(':lesson_id/vocabulary')
     async getLessonVocabulary(@Param('lesson_id') lesson_id: string) {
         return await this.vocabularyService.findByLessonId(lesson_id);
     }
 
-    @Roles(Role.admin, Role.student)
+    @Roles(Role.admin, Role.student, Role.teacher)
     @Get('all')
-    async getAllLessons(){
+    async getAllLessons() {
         return await this.lessonService.getAllLessons();
+    }
+
+    @Roles(Role.teacher, Role.admin)
+    @Put('update')
+    async updateLesson(@Body() dto: UpdateLessonDto) {
+        return await this.lessonService.updateLesson(dto)
     }
 
 }
