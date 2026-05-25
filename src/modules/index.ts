@@ -7,3 +7,5 @@ export * from './vocabulary'
 export * from './user';
 export * from './bot'
 export * from './results'
+export * from './group'
+export * from './statistics'

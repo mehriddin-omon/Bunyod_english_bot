@@ -1,7 +1,8 @@
-import { Column, Entity, OneToMany } from "typeorm";
+import { Column, Entity, OneToMany, ManyToMany } from "typeorm";
 import { BaseEntity } from "./base.entity";
 import { Role } from "src/common/utils";
 import { UserVocabularyStats } from "./user-vocabulary-stats.entity";
+import { Group } from "./group.entity";
 
 // user.entity.ts
 @Entity({ name: 'users' })
@@ -15,6 +16,9 @@ export class User extends BaseEntity {
     @Column({ type: 'varchar', name: 'fullName', nullable: true })
     fullName: string;
 
+    @Column({ type: 'varchar', name: 'email', nullable: true })
+    email: string;
+
     @Column({ type: 'bigint', name: 'telegramId', nullable: true })
     telegramId: number;
 
@@ -26,4 +30,7 @@ export class User extends BaseEntity {
 
     @OneToMany(() => UserVocabularyStats, (vocabulary_stats) => vocabulary_stats.user)
     vocabulary_stats: UserVocabularyStats[];
+
+    @ManyToMany(() => Group, (group) => group.members)
+    groups: Group[];
 }

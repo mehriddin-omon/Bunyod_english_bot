@@ -15,6 +15,8 @@ import {
 import { TELEGRAM_TOKEN } from './common';
 import { AdminModule } from './modules/admin';
 import { VocabularyStatsModule } from './modules/results/result.module';
+import { GroupModule } from './modules/group/group.module';
+import { StatisticsModule } from './modules/statistics/statistics.module';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -66,6 +68,8 @@ const isProd = process.env.NODE_ENV === 'production';
     UserModule,
     VocabularyModule,
     VocabularyStatsModule,
+    GroupModule,
+    StatisticsModule,
     GuardModule,
     // TestsModule,
   ],

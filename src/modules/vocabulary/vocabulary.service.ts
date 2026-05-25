@@ -2,8 +2,14 @@ import * as gTTS from 'google-tts-api';
 import * as path from 'path';
 import * as fs from 'fs';
 import fetch from 'node-fetch';
-import { In, Repository } from 'typeorm';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Repository } from 'typeorm';
+import {
+    BadRequestException,
+    HttpException,
+    Injectable,
+    InternalServerErrorException,
+    NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CreateVocabularyDto } from './dto/create-vocabulary.dto';
 import { Vocabulary, VocabularyRelations } from 'src/common/core/entitys/vocabulary.entity';
@@ -46,6 +52,9 @@ export class VocabularyService {
             .split(/\n|·/) // · yoki newline bo‘yicha split
             .map((l) => l.trim())
             .filter(Boolean);
+
+        const invalidLines: string[] = [];
+
         const words = lines
             .map((line) => {
                 // Format: word /transcription/ - translation
@@ -70,6 +79,7 @@ export class VocabularyService {
                     };
                 }
 
+                invalidLines.push(line);
                 return null;
             })
             .filter(
@@ -77,7 +87,7 @@ export class VocabularyService {
                     w !== null,
             );
 
-        return { words };
+        return { words, invalidLines };
     }
     async sleep(ms: number) {
         return new Promise((resolve) => setTimeout(resolve, ms));
@@ -152,8 +162,34 @@ export class VocabularyService {
     }
 
     async importFromText(rawText: string, lesson_id?: string) {
-        const { words } = await this.parseVocabularyText(rawText);
+        if (!rawText?.trim()) {
+            throw new BadRequestException('Import text is required.');
+        }
+
+        const { words, invalidLines } = await this.parseVocabularyText(rawText);
+
+        if (words.length === 0) {
+            const invalidSample = invalidLines.slice(0, 3).join(' | ');
+            throw new BadRequestException(
+                invalidSample
+                    ? `No valid vocabulary rows were found. Expected format: "word /transcription/ - translation" or "word - translation". Invalid rows: ${invalidSample}`
+                    : 'No valid vocabulary rows were found. Expected format: "word /transcription/ - translation" or "word - translation".',
+            );
+        }
+
         const results: Vocabulary[] = [];
+        let lesson: Lesson | null = null;
+
+        if (lesson_id) {
+            lesson = await this.lessonRepository.findOne({
+                where: { id: lesson_id },
+                relations: ['vocabulary'],
+            });
+
+            if (!lesson) {
+                throw new NotFoundException(`Lesson with id ${lesson_id} not found`);
+            }
+        }
 
         for (const w of words) {
             const dto: CreateVocabularyDto = {
@@ -163,21 +199,43 @@ export class VocabularyService {
                 translation: w.uzbek,
             };
 
-            // mavjud create funksiyasidan foydalanamiz
-            const savedWord = await this.create(dto);
+            let savedWord: Vocabulary;
+
+            try {
+                // mavjud create funksiyasidan foydalanamiz
+                savedWord = await this.create(dto);
+            } catch (error) {
+                if (error instanceof HttpException) {
+                    throw error;
+                }
+
+                const message = error instanceof Error ? error.message : 'Unknown error';
+                throw new InternalServerErrorException(
+                    `Failed to import word "${w.english}": ${message}`,
+                );
+            }
 
             // agar lessonId berilgan bo‘lsa, Many-to-Many bog‘lash
-            if (lesson_id) {
-                // Lessonni topamiz
-                const lesson = await this.lessonRepository.findOne({
-                    where: { id: lesson_id },
-                    relations: ['vocabulary'],
-                });
+            if (lesson) {
+                const alreadyAttached = lesson.vocabulary.some(
+                    (existingWord) => existingWord.id === savedWord.id,
+                );
 
-                if (lesson) {
-                    // yangi so‘zni lesson.vocabulary arrayiga qo‘shamiz
+                if (!alreadyAttached) {
                     lesson.vocabulary.push(savedWord);
-                    await this.lessonRepository.save(lesson);
+
+                    try {
+                        await this.lessonRepository.save(lesson);
+                    } catch (error) {
+                        if (error instanceof HttpException) {
+                            throw error;
+                        }
+
+                        const message = error instanceof Error ? error.message : 'Unknown error';
+                        throw new InternalServerErrorException(
+                            `Failed to attach word "${w.english}" to lesson ${lesson.id}: ${message}`,
+                        );
+                    }
                 }
             }
 
