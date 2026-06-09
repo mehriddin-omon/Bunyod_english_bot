@@ -1,11 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 import { User } from 'src/common/core/entitys/user.entity';
 import { Group } from 'src/common/core/entitys/group.entity';
 import { CurriculumLesson } from 'src/common/core/entitys/lesson.entity';
 import { DailyTracking } from 'src/common/core/entitys/daily-tracking.entity';
 import { Role, GroupStatus } from 'src/common/utils/enum';
+import { UpdateUserDto } from './dto/admin.dto';
 
 @Injectable()
 export class AdminService {
@@ -46,6 +48,33 @@ export class AdminService {
     }
 
     user.role = role;
+    return await this.userRepository.save(user);
+  }
+
+  async updateUser(userId: string, dto: UpdateUserDto): Promise<User> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (dto.username && dto.username !== user.username) {
+      const existing = await this.userRepository.findOne({ where: { username: dto.username } });
+      if (existing) {
+        throw new ConflictException('Username already taken');
+      }
+    }
+
+    if (dto.firstName !== undefined) user.firstName = dto.firstName;
+    if (dto.lastName !== undefined) user.lastName = dto.lastName;
+    if (dto.username !== undefined) user.username = dto.username;
+    if (dto.phone !== undefined) user.phone = dto.phone;
+    if (dto.role !== undefined) user.role = dto.role;
+    if (dto.cefrLevel !== undefined) user.cefrLevel = dto.cefrLevel;
+    if (dto.password !== undefined) {
+      user.password = await bcrypt.hash(dto.password, 10);
+    }
+
     return await this.userRepository.save(user);
   }
 }

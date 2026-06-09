@@ -37,3 +37,32 @@ export class RefreshTokenDto {
   @IsString()
   refreshToken: string;
 }
+
+export class UpdateProfileDto {
+  @IsOptional()
+  @IsString()
+  firstName?: string;
+
+  @IsOptional()
+  @IsString()
+  lastName?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\+998\d{9}$/, { message: 'Telefon raqam +998XXXXXXXXX formatda bolishi kerak' })
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-zA-Z0-9_]{4,20}$/, { message: 'Login 4-20 ta lotin harfi, raqam yoki _ bolishi kerak' })
+  username?: string;
+
+  @IsOptional()
+  @IsString()
+  currentPassword?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  newPassword?: string;
+}

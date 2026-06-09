@@ -2,13 +2,14 @@ import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { TokenService } from '@my/common';
-import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { LoginDto, RegisterDto, UpdateProfileDto } from './dto/auth.dto';
 import { User } from 'src/common/core/entitys/user.entity';
 import { UserGamification } from 'src/common/core/entitys/gamification.entity';
 import { Role } from 'src/common/utils/enum';
@@ -122,6 +123,31 @@ export class AuthService {
           }
         : null,
     };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Foydalanuvchi topilmadi');
+
+    if (dto.username && dto.username !== user.username) {
+      const existing = await this.userRepository.findOne({ where: { username: dto.username } });
+      if (existing) throw new ConflictException('Bu username band');
+    }
+
+    if (dto.newPassword) {
+      if (!dto.currentPassword) throw new BadRequestException('Joriy parol kiritilmagan');
+      const isValid = await bcrypt.compare(dto.currentPassword, user.password);
+      if (!isValid) throw new UnauthorizedException("Joriy parol noto'g'ri");
+      user.password = await bcrypt.hash(dto.newPassword, 10);
+    }
+
+    if (dto.firstName !== undefined) user.firstName = dto.firstName;
+    if (dto.lastName !== undefined) user.lastName = dto.lastName;
+    if (dto.phone !== undefined) user.phone = dto.phone;
+    if (dto.username !== undefined) user.username = dto.username;
+
+    const saved = await this.userRepository.save(user);
+    return { message: 'Profil yangilandi', user: this.formatUser(saved) };
   }
 
   private formatUser(user: User) {

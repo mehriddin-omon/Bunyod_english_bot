@@ -4,6 +4,7 @@ import { Role } from 'src/common/utils/enum';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guard/roles.guard';
+import { UpdateUserDto } from './dto/admin.dto';
 
 @Controller('admin')
 @UseGuards(GuardService, RolesGuard)
@@ -28,5 +29,15 @@ export class AdminController {
       message: 'User role updated successfully',
       user,
     };
+  }
+
+  @Roles(Role.admin)
+  @Patch('user/:id')
+  async updateUser(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserDto,
+  ) {
+    const user = await this.adminService.updateUser(id, dto);
+    return { message: 'User updated successfully', user };
   }
 }
