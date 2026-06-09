@@ -1,4 +1,24 @@
-import { IsString, IsOptional, IsArray, IsUUID } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsNumber, IsBoolean, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class ScheduleInputDto {
+  @IsArray()
+  days: number[];
+
+  @IsString()
+  startTime: string;
+
+  @IsNumber()
+  duration: number;
+
+  @IsOptional()
+  @IsString()
+  topic?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  recurring?: boolean;
+}
 
 export class CreateGroupDto {
   @IsString()
@@ -6,15 +26,28 @@ export class CreateGroupDto {
 
   @IsOptional()
   @IsString()
-  description?: string;
+  color?: string;
+
+  @IsOptional()
+  @IsString()
+  cefrLevel?: string;
+
+  @IsOptional()
+  @IsNumber()
+  maxStudents?: number;
+
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ScheduleInputDto)
+  schedule?: ScheduleInputDto;
 
   @IsOptional()
   @IsArray()
-  memberIds?: string[];
-
-  @IsOptional()
-  @IsArray()
-  lessonIds?: string[];
+  studentIds?: string[];
 }
 
 export class UpdateGroupDto {
@@ -24,23 +57,26 @@ export class UpdateGroupDto {
 
   @IsOptional()
   @IsString()
+  color?: string;
+
+  @IsOptional()
+  @IsString()
+  cefrLevel?: string;
+
+  @IsOptional()
+  @IsNumber()
+  maxStudents?: number;
+
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
   description?: string;
-
-  @IsOptional()
-  @IsArray()
-  memberIds?: string[];
-
-  @IsOptional()
-  @IsArray()
-  lessonIds?: string[];
 }
 
-export class AddMembersDto {
+export class AddStudentsDto {
   @IsArray()
-  memberIds: string[];
-}
-
-export class AddLessonsDto {
-  @IsArray()
-  lessonIds: string[];
+  studentIds: string[];
 }

@@ -2,6 +2,8 @@ import { Logger, LogLevel, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { config, corsConfig } from './config';
+import helmet from 'helmet';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 // import { UUIDInterceptor } from 'src/infrastructure';
 
 export default class Application {
@@ -10,7 +12,9 @@ export default class Application {
   public static async main(): Promise<void> {
     const app = await NestFactory.create(AppModule);
     const environment = config.NODE_ENV || 'development';
+    app.use(helmet());
     app.enableCors(corsConfig[environment]);
+    app.useGlobalFilters(new GlobalExceptionFilter());
 
     const apiPrefix = 'api/v1';
     app.setGlobalPrefix(apiPrefix);

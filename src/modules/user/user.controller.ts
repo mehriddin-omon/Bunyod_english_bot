@@ -1,44 +1,59 @@
 import {
-	Controller,
-	Post, Put,
-	Param, Body,
-	HttpCode, HttpStatus,
-	NotFoundException, UnauthorizedException,
+  Controller,
+  Post, Get, Put, Delete,
+  Param, Body, Query,
+  UseGuards, Request,
+  HttpCode, HttpStatus,
 } from '@nestjs/common';
-import { LoginDto } from './dto/create-user.dto';
+import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
+import { RolesGuard } from 'src/common/guard/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { Role } from 'src/common/utils/enum';
 import { UserService } from './user.service';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { Public } from 'src/common/decorators/jwt-public.decorator';
+import {
+  CreateUserDto,
+  UpdateUserByAdminDto,
+  UserListQueryDto,
+} from './dto/user-management.dto';
 
-@Controller('user')
+@Controller('users')
+@UseGuards(GuardService, RolesGuard)
 export class UserController {
-	constructor(
-		private readonly userService: UserService,
-	) { }
+  constructor(private readonly userService: UserService) {}
 
-	@Public()
-	@HttpCode(HttpStatus.OK)
-	@Post('login')
-	async login(@Body() dto: LoginDto) {
-		const user = await this.userService.getmyInfo(dto.username);
-		if (!user) {
-			throw new NotFoundException('User not found');
-		}
-		// if (dto.username === user.username && dto.password === user.password) {
-			return {
-				message: 'Login successful',
-				user
-			};
-		// }
-		throw new UnauthorizedException('Invalid credentials');
-	}
+  @Post()
+  @Roles(Role.admin, Role.teacher)
+  async createUser(@Body() dto: CreateUserDto, @Request() req) {
+    const data = await this.userService.createUser(dto, req.user.sub, req.user.role);
+    return { statusCode: 201, message: 'Foydalanuvchi yaratildi', data };
+  }
 
-	@Put(':id')
-	async updateMyProfile(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-		const update = this.userService.updateMyProfile(id, dto);
-		return {
-			message: "Malumot yangilandi",
-			data: update
-		}
-	}
+  @Get()
+  @Roles(Role.admin, Role.teacher)
+  async findAll(@Query() query: UserListQueryDto, @Request() req) {
+    const data = await this.userService.findAll(query, req.user.sub, req.user.role);
+    return { statusCode: 200, message: "Foydalanuvchilar ro'yxati", ...data };
+  }
+
+  @Get(':id')
+  @Roles(Role.admin, Role.teacher)
+  async findById(@Param('id') id: string, @Request() req) {
+    const data = await this.userService.findById(id, req.user.sub, req.user.role);
+    return { statusCode: 200, message: "Foydalanuvchi ma'lumoti", data };
+  }
+
+  @Put(':id')
+  @Roles(Role.admin)
+  async updateUser(@Param('id') id: string, @Body() dto: UpdateUserByAdminDto, @Request() req) {
+    const data = await this.userService.updateUser(id, dto, req.user.sub, req.user.role);
+    return { statusCode: 200, message: 'Foydalanuvchi yangilandi', data };
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.admin)
+  async deleteUser(@Param('id') id: string, @Request() req) {
+    const data = await this.userService.deleteUser(id, req.user.sub, req.user.role);
+    return { statusCode: 200, message: "Foydalanuvchi o'chirildi", data };
+  }
 }

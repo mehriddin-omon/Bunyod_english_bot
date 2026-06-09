@@ -1,0 +1,6 @@
+{
+    "dataworkspace.excludedProjects": [
+        "SQL/groups.sqlproj",
+        "SQL/users.sqlproj"
+    ]
+}

@@ -1,25 +1,50 @@
-import { Controller, Post, Body, Get } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { VocabularyService } from './vocabulary.service';
 import { CreateVocabularyDto } from './dto/create-vocabulary.dto';
 import { Public } from 'src/common/decorators/jwt-public.decorator';
+import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
+import { RolesGuard } from 'src/common/guard/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { Role } from 'src/common/utils/enum';
 
 @Controller('vocabulary')
+@UseGuards(GuardService, RolesGuard)
 export class VocabularyController {
-  constructor(private readonly vocabularyService: VocabularyService) { }
+  constructor(private readonly vocabularyService: VocabularyService) {}
+
+  /** GET /vocabulary?unitId=uuid&cefrLevel=B1&status=new */
+  @Get()
+  @Roles(Role.student, Role.teacher, Role.admin)
+  async getVocabulary(
+    @Req() req: any,
+    @Query('unitId') unitId?: string,
+    @Query('cefrLevel') cefrLevel?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.vocabularyService.getVocabularyForStudent(req.user.sub, { unitId, cefrLevel, status });
+  }
+
+  /** POST /vocabulary/:wordId/review — SRS takrorlash */
+  @Post(':wordId/review')
+  @Roles(Role.student)
+  async reviewWord(
+    @Param('wordId') wordId: string,
+    @Body('quality') quality: number,
+    @Req() req: any,
+  ) {
+    return this.vocabularyService.reviewWord(req.user.sub, wordId, quality);
+  }
 
   @Public()
   @Post('create')
   async create(@Body() dto: CreateVocabularyDto) {
-    return await this.vocabularyService.create(dto);
+    return this.vocabularyService.create(dto);
   }
 
   @Public()
   @Post('import-text')
-  async import_text(
-    @Body('text') text: string,
-    @Body('lesson_id') lessonId?: string,
-  ) {
-    return await this.vocabularyService.importFromText(text, lessonId);
+  async import_text(@Body('text') text: string, @Body('lesson_id') lessonId?: string) {
+    return this.vocabularyService.importFromText(text, lessonId);
   }
 
   @Public()
@@ -27,15 +52,16 @@ export class VocabularyController {
   async getAll() {
     return this.vocabularyService.findAllWithTranslations();
   }
+
   @Public()
   @Get('findVocabularyPairs')
   async getFindVocabularyPairs() {
     return this.vocabularyService.findVocabularyPairs();
   }
+
   @Public()
   @Get('generateVocabularyQuiz')
   async getgenerateVocabularyQuiz() {
     return this.vocabularyService.generateVocabularyQuiz();
   }
-
 }

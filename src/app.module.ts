@@ -1,83 +1,57 @@
-import { TelegrafModule, TelegrafModuleOptions } from 'nestjs-telegraf';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { session } from 'telegraf';
 import { GuardModule, ResponseTransformInterceptor } from '@my/common';
-import {
-  BotModule,
-  LessonModule,
-  VocabularyModule,
-  UserModule,
-  AuthModule
-} from './modules';
-import { TELEGRAM_TOKEN } from './common';
+import { AuthModule } from './modules/auth';
+import { UserModule } from './modules/user';
 import { AdminModule } from './modules/admin';
-import { VocabularyStatsModule } from './modules/results/result.module';
+import { VocabularyModule } from './modules/vocabulary';
 import { GroupModule } from './modules/group/group.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
-
-const isProd = process.env.NODE_ENV === 'production';
+import { ProgressModule } from './modules/progress/progress.module';
+import { ScheduleModule } from './modules/schedule/schedule.module';
+import { AssignmentsModule } from './modules/assignments/assignments.module';
+import { MonitoringModule } from './modules/monitoring/monitoring.module';
+import { GamificationModule } from './modules/gamification/gamification.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { LessonsModule } from './modules/lessons/lessons.module';
+import { TeacherLessonsModule } from './modules/teacher-lessons/teacher-lessons.module';
 
 @Module({
   imports: [
-    // 🌱 Global config
-    ConfigModule.forRoot({
-      envFilePath: '.env',
-      isGlobal: true,
-    }),
+    ConfigModule.forRoot({ envFilePath: '.env', isGlobal: true }),
 
-    // 🤖 Telegram bot config
-    TelegrafModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService): TelegrafModuleOptions => {
-        const token = config.get<string>('NODE_ENV') === 'production'
-          ? config.get<string>('TELEGRAM_BOT_PROD_TOKEN')
-          : config.get<string>('TELEGRAM_BOT_DEMO_TOKEN');
-
-        if (!token)
-          throw new Error(`Missing ${TELEGRAM_TOKEN} in .env`);
-        return {
-          token,
-          middlewares: [session()],
-        };
-      },
-    }),
-
-    // 🗄️ Database config
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         type: 'postgres',
         url: configService.get<string>('DB_URL'),
-        autoLoadEntities: true,
-        synchronize: configService.get<string>('NODE_ENV') === 'development', //
-        // logging: configService.get<string>('NODE_ENV') === 'development' ? ['query', 'error']:['error'], // Enable logging in development})
-        retryAttempts: 3, // Retry connection attempts
+        entities: [__dirname + '/**/*.entity{.ts,.js}'],
+        synchronize: configService.get<string>('NODE_ENV') === 'development',
+        retryAttempts: 3,
       }),
     }),
 
-    // 📦 Feature modules
+    GuardModule,
     AuthModule,
     AdminModule,
-    BotModule,
-    LessonModule,
     UserModule,
     VocabularyModule,
-    VocabularyStatsModule,
     GroupModule,
     StatisticsModule,
-    GuardModule,
-    // TestsModule,
+    ProgressModule,
+    ScheduleModule,
+    AssignmentsModule,
+    MonitoringModule,
+    GamificationModule,
+    NotificationsModule,
+    LessonsModule,
+    TeacherLessonsModule,
   ],
   providers: [
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: ResponseTransformInterceptor,
-    },
+    { provide: APP_INTERCEPTOR, useClass: ResponseTransformInterceptor },
   ],
 })
-export class AppModule { }
+export class AppModule {}

@@ -1,0 +1,643 @@
+// ============================================================
+// Linguara — To'liq ma'lumotlar bazasi sxemasi (DBML)
+// Versiya: 2.0
+// ============================================================
+
+// ─── FOYDALANUVCHILAR ────────────────────────────────────────
+
+Table users {
+  id           uuid   [pk, default: `gen_random_uuid()`]
+  username     varchar [unique, not null]
+  password     varchar [not null]
+  full_name    varchar
+  phone        varchar
+  email        varchar [unique]
+  telegram_id  bigint  [unique]
+  telegram_username varchar
+  avatar_url   varchar
+  birth_date   date
+  address      text
+  role         varchar [not null, default: 'student', note: 'superAdmin|admin|teacher|student']
+  created_by   uuid    [ref: > users.id, note: 'Teacher yoki Admin yaratgan']
+  created_at   timestamptz [default: `now()`]
+  updated_at   timestamptz [default: `now()`]
+
+  indexes {
+    username [unique]
+    email    [unique]
+    telegram_id [unique]
+    role
+  }
+}
+
+// ─── KURS TUZILISHI ──────────────────────────────────────────
+
+Table units {
+  id          uuid   [pk, default: `gen_random_uuid()`]
+  number      int    [not null, note: '1–6']
+  title       varchar [not null]
+  description text
+  order_index int    [not null, default: 0]
+  status      varchar [not null, default: 'draft', note: 'draft|published|archived']
+  created_at  timestamptz [default: `now()`]
+  updated_at  timestamptz [default: `now()`]
+
+  indexes {
+    number [unique]
+  }
+}
+
+Table lessons {
+  id              uuid    [pk, default: `gen_random_uuid()`]
+  unit_id         uuid    [ref: > units.id]
+  lesson_number   varchar [note: '"3.9", "3.10" kabi']
+  lesson_name     varchar [not null]
+  lesson_type     varchar [not null, note: 'grammar|reading|listening|vocabulary|test|mixed']
+  order_index     int     [not null, default: 0, note: 'Unit ichidagi tartib']
+  duration_minutes int    [default: 15]
+  status          varchar [not null, default: 'draft', note: 'draft|published|archived']
+  created_at      timestamptz [default: `now()`]
+  updated_at      timestamptz [default: `now()`]
+
+  indexes {
+    unit_id
+    (unit_id, order_index)
+    status
+  }
+}
+
+// ─── GRAMMATIKA ───────────────────────────────────────────────
+
+Table grammar_contents {
+  id          uuid   [pk, default: `gen_random_uuid()`]
+  lesson_id   uuid   [ref: > lessons.id]
+  title       varchar [not null]
+  description text
+  formula     varchar [note: 'Masalan: Subject + Verb(past) + Object']
+  order_index int    [default: 0]
+  created_at  timestamptz [default: `now()`]
+  updated_at  timestamptz [default: `now()`]
+
+  indexes { lesson_id }
+}
+
+Table grammar_examples {
+  id              uuid   [pk, default: `gen_random_uuid()`]
+  grammar_id      uuid   [ref: > grammar_contents.id]
+  english_text    text   [not null]
+  uzbek_text      text
+  highlight_word  varchar [note: 'Ajratilib korsatiladigan soz']
+  order_index     int    [default: 0]
+
+  indexes { grammar_id }
+}
+
+Table grammar_rules {
+  id          uuid   [pk, default: `gen_random_uuid()`]
+  grammar_id  uuid   [ref: > grammar_contents.id]
+  title       varchar [not null]
+  description text   [not null]
+  order_index int    [default: 0]
+
+  indexes { grammar_id }
+}
+
+// ─── READING ─────────────────────────────────────────────────
+
+Table reading_contents {
+  id                   uuid   [pk, default: `gen_random_uuid()`]
+  lesson_id            uuid   [ref: > lessons.id]
+  title                varchar [not null]
+  author               varchar
+  text_content         text   [not null]
+  word_count           int
+  reading_time_minutes int
+  order_index          int    [default: 0]
+  created_at           timestamptz [default: `now()`]
+  updated_at           timestamptz [default: `now()`]
+
+  indexes { lesson_id }
+}
+
+Table reading_questions {
+  id                  uuid   [pk, default: `gen_random_uuid()`]
+  reading_id          uuid   [ref: > reading_contents.id]
+  question_text       text   [not null]
+  question_type       varchar [not null, note: 'multiple_choice|fill_in_blank|true_false']
+  correct_explanation text
+  order_index         int    [default: 0]
+
+  indexes { reading_id }
+}
+
+Table reading_options {
+  id            uuid    [pk, default: `gen_random_uuid()`]
+  question_id   uuid    [ref: > reading_questions.id]
+  option_text   text    [not null]
+  is_correct    boolean [not null, default: false]
+  order_index   int     [default: 0]
+
+  indexes { question_id }
+}
+
+// ─── LISTENING ────────────────────────────────────────────────
+
+Table listening_contents {
+  id               uuid   [pk, default: `gen_random_uuid()`]
+  lesson_id        uuid   [ref: > lessons.id]
+  title            varchar [not null]
+  file_id          varchar [not null, note: 'Telegram file_id yoki storage path']
+  duration_seconds int
+  speaker_count    int    [default: 1]
+  order_index      int    [default: 0]
+  created_at       timestamptz [default: `now()`]
+  updated_at       timestamptz [default: `now()`]
+
+  indexes { lesson_id }
+}
+
+Table listening_transcripts {
+  id               uuid    [pk, default: `gen_random_uuid()`]
+  listening_id     uuid    [ref: > listening_contents.id]
+  speaker_name     varchar
+  timestamp_sec    float
+  text_content     text    [not null]
+  order_index      int     [default: 0]
+
+  indexes { listening_id }
+}
+
+Table listening_questions {
+  id                  uuid   [pk, default: `gen_random_uuid()`]
+  listening_id        uuid   [ref: > listening_contents.id]
+  question_text       text   [not null]
+  question_type       varchar [not null, note: 'multiple_choice|fill_in_blank']
+  correct_explanation text
+  order_index         int    [default: 0]
+
+  indexes { listening_id }
+}
+
+Table listening_options {
+  id            uuid    [pk, default: `gen_random_uuid()`]
+  question_id   uuid    [ref: > listening_questions.id]
+  option_text   text    [not null]
+  is_correct    boolean [not null, default: false]
+  order_index   int     [default: 0]
+
+  indexes { question_id }
+}
+
+// ─── LUG'AT ──────────────────────────────────────────────────
+
+Table vocabularys {
+  id              uuid   [pk, default: `gen_random_uuid()`]
+  word            varchar [not null]
+  ipa             varchar [note: 'Talaffuz: /ˈmem.ə.rə.bəl/']
+  pos             varchar [note: 'noun|verb|adjective|adverb|phrase']
+  uzbek_translation text
+  topic           varchar [note: 'nature|feelings|travel|daily']
+  cefr_level      varchar [note: 'A1|A2|B1|B2|C1|C2']
+  lang            varchar [default: 'en']
+  voice_file_id   varchar [note: 'Talaffuz audio fayl ID']
+  image_url       varchar
+  example         text    [note: 'Asosiy misol (qisqa)']
+  order_index     bigint  [default: 0]
+  created_at      timestamptz [default: `now()`]
+  updated_at      timestamptz [default: `now()`]
+
+  indexes {
+    word
+    topic
+    cefr_level
+  }
+}
+
+Table vocabulary_examples {
+  id               uuid   [pk, default: `gen_random_uuid()`]
+  vocabulary_id    uuid   [ref: > vocabularys.id]
+  english_text     text   [not null]
+  uzbek_text       text
+  highlight_word   varchar
+  order_index      int    [default: 0]
+
+  indexes { vocabulary_id }
+}
+
+Table vocabulary_synonyms {
+  vocabulary_id uuid [ref: > vocabularys.id]
+  synonym_id    uuid [ref: > vocabularys.id]
+
+  indexes {
+    (vocabulary_id, synonym_id) [pk]
+  }
+}
+
+Table vocabulary_antonyms {
+  vocabulary_id uuid [ref: > vocabularys.id]
+  antonym_id    uuid [ref: > vocabularys.id]
+
+  indexes {
+    (vocabulary_id, antonym_id) [pk]
+  }
+}
+
+Table lesson_vocabulary {
+  lesson_id      uuid [ref: > lessons.id]
+  vocabulary_id  uuid [ref: > vocabularys.id]
+  order_index    int  [default: 0]
+
+  indexes {
+    (lesson_id, vocabulary_id) [pk]
+  }
+}
+
+// ─── TEST / AMALIYOT ─────────────────────────────────────────
+
+Table test_questions {
+  id                  uuid   [pk, default: `gen_random_uuid()`]
+  lesson_id           uuid   [ref: > lessons.id]
+  question_text       text   [not null]
+  question_type       varchar [not null, note: 'multiple_choice|fill_in_blank|true_false|matching']
+  media_file_id       varchar
+  time_limit_seconds  int
+  order_index         int    [default: 0]
+  created_at          timestamptz [default: `now()`]
+  updated_at          timestamptz [default: `now()`]
+
+  indexes { lesson_id }
+}
+
+Table test_options {
+  id            uuid    [pk, default: `gen_random_uuid()`]
+  question_id   uuid    [ref: > test_questions.id]
+  option_text   text    [not null]
+  is_correct    boolean [not null, default: false]
+  order_index   int     [default: 0]
+
+  indexes { question_id }
+}
+
+// ─── GURUHLAR ────────────────────────────────────────────────
+
+Table groups {
+  id          uuid   [pk, default: `gen_random_uuid()`]
+  name        varchar [not null]
+  description text
+  color       varchar [note: 'blue|emerald|amber|zinc']
+  teacher_id  uuid   [ref: > users.id]
+  created_by  uuid   [ref: > users.id]
+  status      varchar [not null, default: 'active', note: 'active|inactive|archived']
+  created_at  timestamptz [default: `now()`]
+  updated_at  timestamptz [default: `now()`]
+
+  indexes {
+    teacher_id
+    status
+  }
+}
+
+Table group_members {
+  group_id  uuid [ref: > groups.id]
+  user_id   uuid [ref: > users.id]
+  joined_at timestamptz [default: `now()`]
+
+  indexes {
+    (group_id, user_id) [pk]
+    user_id
+  }
+}
+
+Table group_lessons {
+  group_id  uuid [ref: > groups.id]
+  lesson_id uuid [ref: > lessons.id]
+
+  indexes {
+    (group_id, lesson_id) [pk]
+  }
+}
+
+// ─── JADVAL ──────────────────────────────────────────────────
+
+Table schedules {
+  id               uuid   [pk, default: `gen_random_uuid()`]
+  group_id         uuid   [ref: > groups.id]
+  teacher_id       uuid   [ref: > users.id]
+  topic            varchar
+  days_of_week     varchar [not null, note: 'JSON array: [0,2,4] — Du,Ch,Ju']
+  start_time       time   [not null]
+  duration_minutes int    [not null, default: 90]
+  is_recurring     boolean [not null, default: true]
+  valid_from       date   [not null]
+  valid_until      date
+  created_at       timestamptz [default: `now()`]
+  updated_at       timestamptz [default: `now()`]
+
+  indexes {
+    group_id
+    teacher_id
+  }
+}
+
+Table schedule_sessions {
+  id               uuid   [pk, default: `gen_random_uuid()`]
+  schedule_id      uuid   [ref: > schedules.id]
+  group_id         uuid   [ref: > groups.id]
+  teacher_id       uuid   [ref: > users.id]
+  session_date     date   [not null]
+  start_time       time   [not null]
+  duration_minutes int    [not null, default: 90]
+  topic            varchar
+  status           varchar [not null, default: 'scheduled', note: 'scheduled|ongoing|completed|cancelled']
+  notes            text
+  created_at       timestamptz [default: `now()`]
+  updated_at       timestamptz [default: `now()`]
+
+  indexes {
+    schedule_id
+    group_id
+    session_date
+  }
+}
+
+Table attendance {
+  id          uuid   [pk, default: `gen_random_uuid()`]
+  session_id  uuid   [ref: > schedule_sessions.id]
+  user_id     uuid   [ref: > users.id]
+  status      varchar [not null, note: 'present|absent|late|excused']
+  joined_at   timestamptz
+  created_at  timestamptz [default: `now()`]
+
+  indexes {
+    (session_id, user_id) [unique]
+    user_id
+  }
+}
+
+// ─── PROGRESS ────────────────────────────────────────────────
+
+Table lesson_progress {
+  id               uuid   [pk, default: `gen_random_uuid()`]
+  user_id          uuid   [ref: > users.id]
+  lesson_id        uuid   [ref: > lessons.id]
+  status           varchar [not null, default: 'not_started', note: 'not_started|in_progress|completed']
+  score            int    [note: '0–100']
+  total_questions  int
+  correct_answers  int
+  time_spent_sec   int    [default: 0]
+  attempts         int    [default: 1]
+  completed_at     timestamptz
+  created_at       timestamptz [default: `now()`]
+  updated_at       timestamptz [default: `now()`]
+
+  indexes {
+    (user_id, lesson_id) [unique]
+    user_id
+    lesson_id
+    status
+  }
+}
+
+Table user_vocabulary_progress {
+  id               uuid   [pk, default: `gen_random_uuid()`]
+  user_id          uuid   [ref: > users.id]
+  vocabulary_id    uuid   [ref: > vocabularys.id]
+  status           varchar [not null, default: 'new', note: 'new|learning|mastered']
+  strength         int    [not null, default: 0, note: '0–100']
+  attempts         int    [not null, default: 0]
+  wrong_attempts   int    [not null, default: 0]
+  is_hard          boolean [not null, default: false]
+  last_reviewed_at timestamptz
+  next_review_at   timestamptz
+  created_at       timestamptz [default: `now()`]
+  updated_at       timestamptz [default: `now()`]
+
+  indexes {
+    (user_id, vocabulary_id) [unique]
+    user_id
+    next_review_at
+    status
+  }
+}
+
+Table user_skills {
+  id          uuid   [pk, default: `gen_random_uuid()`]
+  user_id     uuid   [ref: > users.id]
+  skill       varchar [not null, note: 'grammar|reading|listening|speaking|writing|vocabulary']
+  cefr_level  varchar [not null, default: 'A1', note: 'A1|A2|B1|B2|C1|C2']
+  score       int    [not null, default: 0, note: '0–100']
+  words_count int    [note: 'Faqat vocabulary uchun']
+  created_at  timestamptz [default: `now()`]
+  updated_at  timestamptz [default: `now()`]
+
+  indexes {
+    (user_id, skill) [unique]
+    user_id
+  }
+}
+
+// ─── GAMIFIKATSIYA ───────────────────────────────────────────
+
+Table user_gamification {
+  id               uuid   [pk, default: `gen_random_uuid()`]
+  user_id          uuid   [ref: > users.id, unique]
+  level            int    [not null, default: 1]
+  xp_total         int    [not null, default: 0]
+  xp_weekly        int    [not null, default: 0]
+  league           varchar [not null, default: 'bronze', note: 'bronze|silver|gold|platinum|diamond']
+  streak_current   int    [not null, default: 0]
+  streak_max       int    [not null, default: 0]
+  last_activity_date date
+  rank_weekly      int
+  created_at       timestamptz [default: `now()`]
+  updated_at       timestamptz [default: `now()`]
+
+  indexes {
+    user_id [unique]
+    xp_total
+    xp_weekly
+    league
+  }
+}
+
+Table xp_transactions {
+  id             uuid   [pk, default: `gen_random_uuid()`]
+  user_id        uuid   [ref: > users.id]
+  amount         int    [not null]
+  source         varchar [not null, note: 'lesson_complete|vocabulary_mastered|streak_bonus|challenge_bonus|assignment_bonus']
+  reference_id   uuid   [note: 'lesson_id yoki vocabulary_id']
+  created_at     timestamptz [default: `now()`]
+
+  indexes {
+    user_id
+    created_at
+  }
+}
+
+Table achievements {
+  id               uuid   [pk, default: `gen_random_uuid()`]
+  code             varchar [unique, not null]
+  title            varchar [not null]
+  description      text
+  icon             varchar
+  xp_reward        int    [not null, default: 0]
+  condition_type   varchar [not null, note: 'streak|lessons|vocabulary|score|attendance']
+  condition_value  int    [not null]
+  created_at       timestamptz [default: `now()`]
+
+  indexes {
+    code [unique]
+  }
+}
+
+Table user_achievements {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  user_id         uuid [ref: > users.id]
+  achievement_id  uuid [ref: > achievements.id]
+  earned_at       timestamptz [default: `now()`]
+
+  indexes {
+    (user_id, achievement_id) [unique]
+    user_id
+  }
+}
+
+// ─── KUNLIK KUZATUV ──────────────────────────────────────────
+
+Table daily_tracking {
+  id                   uuid   [pk, default: `gen_random_uuid()`]
+  user_id              uuid   [ref: > users.id]
+  date                 date   [not null]
+  minutes_spent        int    [not null, default: 0]
+  lessons_completed    int    [not null, default: 0]
+  vocabulary_reviewed  int    [not null, default: 0]
+  listening_done       boolean [not null, default: false]
+  goal_minutes         int    [not null, default: 30]
+  created_at           timestamptz [default: `now()`]
+
+  indexes {
+    (user_id, date) [unique]
+    user_id
+    date
+  }
+}
+
+Table activity_log {
+  id              uuid   [pk, default: `gen_random_uuid()`]
+  user_id         uuid   [ref: > users.id]
+  logged_at       timestamptz [not null, default: `now()`]
+  day_of_week     int    [not null, note: '0=Du, 6=Ya']
+  hour_of_day     int    [not null, note: '0–23']
+  duration_minutes int   [not null, default: 1]
+  activity_type   varchar [not null, note: 'lesson|vocabulary|listening|reading|test']
+
+  indexes {
+    user_id
+    (user_id, day_of_week, hour_of_day)
+    logged_at
+  }
+}
+
+// ─── TOPSHIRIQLAR ────────────────────────────────────────────
+
+Table assignments {
+  id          uuid   [pk, default: `gen_random_uuid()`]
+  title       varchar [not null]
+  description text
+  type        varchar [not null, note: 'reading|listening|writing|speaking|grammar|vocabulary|test']
+  teacher_id  uuid   [ref: > users.id]
+  group_id    uuid   [ref: > groups.id]
+  lesson_id   uuid   [ref: > lessons.id]
+  due_date    timestamptz
+  max_score   int    [not null, default: 100]
+  status      varchar [not null, default: 'draft', note: 'draft|active|closed']
+  created_at  timestamptz [default: `now()`]
+  updated_at  timestamptz [default: `now()`]
+
+  indexes {
+    teacher_id
+    group_id
+    status
+    due_date
+  }
+}
+
+Table assignment_submissions {
+  id              uuid   [pk, default: `gen_random_uuid()`]
+  assignment_id   uuid   [ref: > assignments.id]
+  student_id      uuid   [ref: > users.id]
+  file_id         varchar
+  text_content    text
+  score           int
+  feedback        text
+  status          varchar [not null, default: 'pending', note: 'pending|submitted|graded|late|revision_needed']
+  submitted_at    timestamptz
+  graded_at       timestamptz
+  graded_by       uuid   [ref: > users.id]
+  created_at      timestamptz [default: `now()`]
+  updated_at      timestamptz [default: `now()`]
+
+  indexes {
+    (assignment_id, student_id) [unique]
+    assignment_id
+    student_id
+    status
+  }
+}
+
+// ─── BILDIRISHNOMALAR ────────────────────────────────────────
+
+Table notifications {
+  id              uuid    [pk, default: `gen_random_uuid()`]
+  user_id         uuid    [ref: > users.id]
+  type            varchar [not null, note: 'message|lesson_unlocked|achievement|assignment|reminder|system']
+  title           varchar [not null]
+  body            text
+  is_read         boolean [not null, default: false]
+  reference_id    uuid    [note: 'Related entity ID']
+  reference_type  varchar [note: 'lesson|assignment|achievement|message']
+  created_at      timestamptz [default: `now()`]
+
+  indexes {
+    user_id
+    (user_id, is_read)
+    created_at
+  }
+}
+
+// ─── XABARLAR ────────────────────────────────────────────────
+
+Table messages {
+  id           uuid    [pk, default: `gen_random_uuid()`]
+  sender_id    uuid    [ref: > users.id]
+  receiver_id  uuid    [ref: > users.id]
+  body         text    [not null]
+  attachments  text    [note: 'JSON: [{file_id, type, name}]']
+  is_read      boolean [not null, default: false]
+  created_at   timestamptz [default: `now()`]
+
+  indexes {
+    sender_id
+    receiver_id
+    (receiver_id, is_read)
+    created_at
+  }
+}
+
+// ─── VOCABULARY RELATIONS (mavjud, saqlanadi) ────────────────
+
+Table vocabulary_relations {
+  id              uuid   [pk, default: `gen_random_uuid()`]
+  vocabulary_id   uuid   [ref: > vocabularys.id]
+  translation_id  uuid   [ref: > vocabularys.id]
+  attempts        bigint [not null, default: 0]
+  wrong_attempts  bigint [not null, default: 0]
+  difficulty      float  [not null, default: 0]
+  created_at      timestamptz [default: `now()`]
+  updated_at      timestamptz [default: `now()`]
+
+  indexes {
+    vocabulary_id
+    translation_id
+  }
+}

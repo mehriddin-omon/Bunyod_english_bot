@@ -1,1 +1,0 @@
-export * from '../../common/core/entitys/reading.entity'

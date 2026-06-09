@@ -1,63 +1,71 @@
-import { BaseEntity } from "src/common/core/entitys/base.entity";
-import { Lesson } from "./lesson.entity";
-import { Column, Entity, JoinColumn, ManyToMany, ManyToOne } from "typeorm";
+import { Column, Entity, ManyToOne, JoinColumn } from 'typeorm';
+import { BaseEntity } from './base.entity';
+import { PartOfSpeech, CefrLevel, VocabStatus } from 'src/common/utils/enum';
+import { User } from './user.entity';
+import { Unit } from './unit.entity';
 
-@Entity("vocabularys")
-class Vocabulary extends BaseEntity {
-
+@Entity('vocabulary_words')
+export class VocabularyWord extends BaseEntity {
   @Column({ type: 'varchar', name: 'word' })
   word: string;
 
-  @Column({ nullable: true, name: 'lang' })
-  lang: string;
+  @Column({ type: 'varchar', name: 'translation' })
+  translation: string;
 
-  @Column({ nullable: true })
-  voice_file_id: string;
-
-  @Column({ nullable: true })
+  @Column({ type: 'text', name: 'example', nullable: true })
   example: string;
 
-  @Column({ type: "bigint", default: 0 })
-  order_index: number;
+  @Column({ type: 'varchar', name: 'cefr_level', enum: CefrLevel, nullable: true })
+  cefrLevel: CefrLevel;
 
-  @ManyToMany(() => Lesson, (lesson) => lesson.vocabulary, { onDelete: "CASCADE" })
-  lesson: Lesson[];
+  @Column({ type: 'varchar', name: 'pos', enum: PartOfSpeech, nullable: true })
+  pos: PartOfSpeech;
 
+  @Column({ type: 'simple-array', name: 'synonyms', nullable: true })
+  synonyms: string[];
+
+  @Column({ type: 'simple-array', name: 'antonyms', nullable: true })
+  antonyms: string[];
+
+  @Column({ type: 'uuid', name: 'unit_id', nullable: true })
+  unitId: string;
+
+  @ManyToOne(() => Unit, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'unit_id' })
+  unit: Unit;
 }
 
-@Entity("vocabulary_relations")
-class VocabularyRelations extends BaseEntity {
+@Entity('vocabulary_reviews')
+export class VocabularyReview extends BaseEntity {
+  @Column({ type: 'uuid', name: 'user_id' })
+  userId: string;
 
-  @ManyToOne(() => Vocabulary, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "vocabulary_id" })
-  vocabulary: Vocabulary;
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'user_id' })
+  user: User;
 
-  @ManyToOne(() => Vocabulary, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "translation_id" })
-  translation: Vocabulary;
+  @Column({ type: 'uuid', name: 'word_id' })
+  wordId: string;
 
-  @Column({
-    type: "bigint",
-    default: 0,
-    transformer: {
-      to: (value: number) => value,
-      from: (value: string) => Number(value),
-    },
-  })
-  attempts: number;
+  @ManyToOne(() => VocabularyWord, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'word_id' })
+  word: VocabularyWord;
 
-  @Column({
-    type: "bigint",
-    default: 0,
-    transformer: {
-      to: (value: number) => value,
-      from: (value: string) => Number(value),
-    },
-  })
-  wrong_attempts: number;
+  @Column({ type: 'varchar', name: 'status', enum: VocabStatus, default: VocabStatus.new })
+  status: VocabStatus;
 
-  @Column({ type: "float", default: 0 })
-  difficulty: number;
+  @Column({ type: 'int', name: 'repetitions', default: 0 })
+  repetitions: number;
+
+  @Column({ type: 'float', name: 'ease_factor', default: 2.5 })
+  easeFactor: number;
+
+  @Column({ type: 'int', name: 'interval', default: 1 })
+  interval: number;
+
+  @Column({ type: 'timestamptz', name: 'next_review_at', nullable: true })
+  nextReviewAt: Date;
+
+  @Column({ type: 'timestamptz', name: 'last_review_at', nullable: true })
+  lastReviewAt: Date;
 }
-
-export { Vocabulary, VocabularyRelations };

@@ -25,5 +25,10 @@
     "strictBindCallApply": false,
     "strictPropertyInitialization": false,
     "noFallthroughCasesInSwitch": false
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/common/api/hooks.ts"
+  ]
 }

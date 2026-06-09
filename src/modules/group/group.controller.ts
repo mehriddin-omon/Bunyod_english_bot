@@ -4,116 +4,59 @@ import { RolesGuard } from 'src/common/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/utils/enum';
 import { GroupService } from './group.service';
-import { CreateGroupDto, UpdateGroupDto, AddMembersDto, AddLessonsDto } from './dto/group.dto';
+import { CreateGroupDto, UpdateGroupDto, AddStudentsDto } from './dto/group.dto';
 
-@Controller('api/v1/group')
+@Controller('groups')
 @UseGuards(GuardService, RolesGuard)
 export class GroupController {
   constructor(private readonly groupService: GroupService) {}
 
-  /**
-   * Yangi guruh yaratish (Faqat teacher)
-   */
-  @Post('create')
-  @Roles(Role.teacher, Role.admin)
-  async createGroup(@Body() dto: CreateGroupDto, @Request() req) {
-    return {
-      statusCode: 201,
-      message: 'Group created successfully',
-      data: await this.groupService.createGroup(dto, req.user.id),
-    };
-  }
-
-  /**
-   * Barcha guruhlarni olish (Teacher yoki Admin)
-   */
-  @Get('all')
-  @Roles(Role.teacher, Role.admin)
+  @Get()
+  @Roles(Role.admin, Role.teacher)
   async getAllGroups(@Request() req) {
-    const groups = await this.groupService.getAllGroups(req.user.id);
-    return {
-      statusCode: 200,
-      message: 'Groups retrieved',
-      data: groups,
-    };
+    return this.groupService.getAllGroups(req.user.sub, req.user.role);
   }
 
-  /**
-   * Guruh bo'yicha ma'lumotlarni olish
-   */
-  @Get(':groupId')
-  @Roles(Role.teacher, Role.admin, Role.student)
-  async getGroupById(@Param('groupId') groupId: string) {
-    return {
-      statusCode: 200,
-      message: 'Group retrieved',
-      data: await this.groupService.getGroupById(groupId),
-    };
+  @Post()
+  @Roles(Role.admin, Role.teacher)
+  async createGroup(@Body() dto: CreateGroupDto, @Request() req) {
+    return this.groupService.createGroup(dto, req.user.sub);
   }
 
-  /**
-   * Guruhni yangilash
-   */
-  @Put(':groupId')
-  @Roles(Role.teacher, Role.admin)
-  async updateGroup(@Param('groupId') groupId: string, @Body() dto: UpdateGroupDto) {
-    return {
-      statusCode: 200,
-      message: 'Group updated successfully',
-      data: await this.groupService.updateGroup(groupId, dto),
-    };
+  @Get(':id')
+  @Roles(Role.admin, Role.teacher)
+  async getGroupById(@Param('id') id: string) {
+    return this.groupService.getGroupById(id);
   }
 
-  /**
-   * A'zolarni qo'shish
-   */
-  @Post(':groupId/members/add')
-  @Roles(Role.teacher, Role.admin)
-  async addMembers(@Param('groupId') groupId: string, @Body() dto: AddMembersDto) {
-    return {
-      statusCode: 200,
-      message: 'Members added successfully',
-      data: await this.groupService.addMembers(groupId, dto),
-    };
+  @Put(':id')
+  @Roles(Role.admin, Role.teacher)
+  async updateGroup(@Param('id') id: string, @Body() dto: UpdateGroupDto, @Request() req) {
+    return this.groupService.updateGroup(id, dto, req.user.sub, req.user.role);
   }
 
-  /**
-   * Darslarni qo'shish
-   */
-  @Post(':groupId/lessons/add')
-  @Roles(Role.teacher, Role.admin)
-  async addLessons(@Param('groupId') groupId: string, @Body() dto: AddLessonsDto) {
-    return {
-      statusCode: 200,
-      message: 'Lessons added successfully',
-      data: await this.groupService.addLessons(groupId, dto),
-    };
+  @Delete(':id')
+  @Roles(Role.admin)
+  async deleteGroup(@Param('id') id: string) {
+    await this.groupService.deleteGroup(id);
+    return { message: "Guruh o'chirildi" };
   }
 
-  /**
-   * Guruhdagi a'zoni o'chirish
-   */
-  @Delete(':groupId/members/:memberId')
-  @Roles(Role.teacher, Role.admin)
-  async removeMember(@Param('groupId') groupId: string, @Param('memberId') memberId: string) {
-    return {
-      statusCode: 200,
-      message: 'Member removed successfully',
-      data: await this.groupService.removeMember(groupId, memberId),
-    };
+  @Post(':id/students')
+  @Roles(Role.admin, Role.teacher)
+  async addStudents(@Param('id') id: string, @Body() dto: AddStudentsDto) {
+    return this.groupService.addStudents(id, dto);
   }
 
-  /**
-   * Guruhni o'chirish
-   */
-  @Delete(':groupId')
-  @Roles(Role.teacher, Role.admin)
-  async deleteGroup(@Param('groupId') groupId: string) {
-    await this.groupService.deleteGroup(groupId);
-    return {
-      statusCode: 200,
-      message: 'Group deleted successfully',
-      data: null,
-    };
+  @Delete(':id/students/:studentId')
+  @Roles(Role.admin, Role.teacher)
+  async removeStudent(@Param('id') id: string, @Param('studentId') studentId: string) {
+    return this.groupService.removeStudent(id, studentId);
+  }
+
+  @Get(':id/schedule')
+  @Roles(Role.admin, Role.teacher, Role.subTeacher, Role.student)
+  async getGroupSchedule(@Param('id') id: string, @Request() req) {
+    return this.groupService.getGroupSchedule(id, req.user.sub, req.user.role);
   }
 }

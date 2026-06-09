@@ -1,42 +1,38 @@
-import { Entity, Column, OneToMany, ManyToMany, JoinTable } from 'typeorm';
-import { BaseEntity } from 'src/common/core/entitys/base.entity';
-import { LessonStatus } from 'src/common/utils/enum';
-import { Listening } from './listening.entity';
-import { Reading } from './reading.entity';
-import { Vocabulary } from './vocabulary.entity';
-import { Test } from './test.entity';
+import { Entity, Column, ManyToOne, OneToMany } from 'typeorm';
+import { BaseEntity } from './base.entity';
+import { LessonStatus, LessonType } from 'src/common/utils/enum';
+import { Unit } from './unit.entity';
+import { LessonProgress } from './lesson-progress.entity';
 
-@Entity({ name: 'lessons' })
-export class Lesson extends BaseEntity {
+@Entity({ name: 'curriculum_lessons' })
+export class CurriculumLesson extends BaseEntity {
+  @Column({ type: 'uuid', name: 'unit_id', nullable: true })
+  unitId: string;
 
-  @Column({
-    type: 'varchar',
-    name: 'lesson_name'
-  })
-  lesson_name: string;
+  @ManyToOne(() => Unit, (unit) => unit.lessons, { onDelete: 'CASCADE', nullable: true })
+  unit: Unit;
 
-  @Column({
-    type: 'varchar',
-    name: 'status',
-    enum: LessonStatus,
-    default: LessonStatus.draft
-  })
+  @Column({ type: 'varchar', name: 'lesson_number', nullable: true })
+  lessonNumber: string;
+
+  @Column({ type: 'varchar', name: 'lesson_name' })
+  lessonName: string;
+
+  @Column({ type: 'varchar', name: 'lesson_type', enum: LessonType, default: LessonType.grammar })
+  lessonType: LessonType;
+
+  @Column({ type: 'int', name: 'order_index', default: 0 })
+  orderIndex: number;
+
+  @Column({ type: 'int', name: 'duration_minutes', default: 15 })
+  durationMinutes: number;
+
+  @Column({ type: 'varchar', name: 'status', enum: LessonStatus, default: LessonStatus.draft })
   status: LessonStatus;
 
-  @ManyToMany(() => Vocabulary, (vocabulary) => vocabulary.lesson, { cascade: true, onDelete: "CASCADE" })
-  @JoinTable({
-    name: "lesson_vocabulary",
-    joinColumn: { name: "lesson_id", referencedColumnName: "id" },
-    inverseJoinColumn: { name: "vocabulary_id", referencedColumnName: "id" },
-  })
-  vocabulary: Vocabulary[];
+  @Column({ type: 'jsonb', name: 'content', nullable: true })
+  content: Record<string, any> | null;
 
-  @OneToMany(() => Listening, (listening) => listening.lesson)
-  listening: Listening[];
-
-  @OneToMany(() => Reading, (reading) => reading.lesson)
-  reading: Reading[];
-
-  @OneToMany(() => Test, (test) => test.lesson)
-  test: Test[];
+  @OneToMany(() => LessonProgress, (p) => p.lesson)
+  progress: LessonProgress[];
 }
