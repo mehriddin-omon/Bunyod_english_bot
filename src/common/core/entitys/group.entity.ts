@@ -1,6 +1,6 @@
-import { Entity, Column, ManyToMany, ManyToOne, JoinTable, OneToMany } from 'typeorm';
-import { BaseEntity } from 'src/common/core/entitys/base.entity';
-import { User } from 'src/common/core/entitys/user.entity';
+import { Entity, Column, ManyToMany, ManyToOne, JoinTable } from 'typeorm';
+import { BaseEntity } from './base.entity';
+import { User } from './user.entity';
 import { GroupStatus } from 'src/common/utils/enum';
 
 @Entity({ name: 'groups' })
@@ -9,25 +9,16 @@ export class Group extends BaseEntity {
   name: string;
 
   @Column({ type: 'varchar', name: 'description', nullable: true })
-  description?: string;
+  description: string | null;
 
   @Column({ type: 'varchar', name: 'color', nullable: true })
-  color?: string;
-
-  @Column({ type: 'varchar', name: 'cefr_level', nullable: true })
-  cefrLevel?: string;
-
-  @Column({ type: 'int', name: 'max_students', nullable: true })
-  maxStudents?: number;
-
-  @Column({ type: 'date', name: 'start_date', nullable: true })
-  startDate?: string;
+  color: string | null;
 
   @Column({ type: 'uuid', name: 'teacher_id', nullable: true })
-  teacherId?: string;
+  teacherId: string | null;
 
   @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
-  teacher?: User;
+  teacher: User | null;
 
   @Column({ type: 'uuid', name: 'created_by' })
   createdBy: string;

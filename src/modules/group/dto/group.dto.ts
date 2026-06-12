@@ -30,15 +30,7 @@ export class CreateGroupDto {
 
   @IsOptional()
   @IsString()
-  cefrLevel?: string;
-
-  @IsOptional()
-  @IsNumber()
-  maxStudents?: number;
-
-  @IsOptional()
-  @IsString()
-  startDate?: string;
+  description?: string;
 
   @IsOptional()
   @ValidateNested()
@@ -58,18 +50,6 @@ export class UpdateGroupDto {
   @IsOptional()
   @IsString()
   color?: string;
-
-  @IsOptional()
-  @IsString()
-  cefrLevel?: string;
-
-  @IsOptional()
-  @IsNumber()
-  maxStudents?: number;
-
-  @IsOptional()
-  @IsString()
-  startDate?: string;
 
   @IsOptional()
   @IsString()

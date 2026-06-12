@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Req, UseGuards } from '@nestjs/common';
 import { ProgressService } from './progress.service';
-import { CompleteLessonDto } from './dto/progress.dto';
+import { CompleteLessonDto, UpsertProgressDto } from './dto/progress.dto';
 import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -34,5 +34,17 @@ export class ProgressController {
   @Roles(Role.student)
   async getOverview(@Req() req: any) {
     return this.progressService.getOverview(req.user.sub);
+  }
+
+  /** GET /progress/me — React Native uchun: barcha yakunlangan darslar */
+  @Get('me')
+  async getMyProgress(@Req() req: any) {
+    return this.progressService.getMyProgress(req.user.sub);
+  }
+
+  /** POST /progress — React Native uchun: upsert (lessonId + score) */
+  @Post()
+  async upsertProgress(@Body() dto: UpsertProgressDto, @Req() req: any) {
+    return this.progressService.upsertProgress(req.user.sub, dto);
   }
 }

@@ -1,17 +1,11 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
-import { Lesson } from 'src/common/core/entitys/teacher-lesson.entity';
-import { LessonBlock } from 'src/common/core/entitys/teacher-lesson-block.entity';
-import { Group } from 'src/common/core/entitys/group.entity';
-import { Grammar } from 'src/common/core/entitys/grammar.entity';
+import { Lesson } from 'src/common/core/entitys/lesson.entity';
+import { Unit } from 'src/common/core/entitys/unit.entity';
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { UpdateLessonDto } from './dto/update-lesson.dto';
+import { LessonStatus } from 'src/common/utils/enum';
 
 @Injectable()
 export class TeacherLessonsService {
@@ -19,82 +13,51 @@ export class TeacherLessonsService {
     @InjectRepository(Lesson)
     private readonly lessonRepo: Repository<Lesson>,
 
-    @InjectRepository(LessonBlock)
-    private readonly blockRepo: Repository<LessonBlock>,
-
-    @InjectRepository(Group)
-    private readonly groupRepo: Repository<Group>,
-
-    @InjectRepository(Grammar)
-    private readonly grammarRepo: Repository<Grammar>,
+    @InjectRepository(Unit)
+    private readonly unitRepo: Repository<Unit>,
   ) {}
 
-  async verifyOwnership(lessonId: string, userId: string): Promise<Lesson> {
+  async verifyLesson(lessonId: string): Promise<Lesson> {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
-    if (!lesson) throw new NotFoundException("Dars topilmadi");
-    if (lesson.teacherId !== userId) throw new ForbiddenException("Bu dars sizga tegishli emas");
+    if (!lesson) throw new NotFoundException('Dars topilmadi');
     return lesson;
   }
 
-  private async getGroupMemberCount(groupId: string): Promise<number> {
-    const result = await this.groupRepo
-      .createQueryBuilder('g')
-      .leftJoin('g.members', 'm')
-      .where('g.id = :groupId', { groupId })
-      .select('COUNT(m.id)', 'cnt')
-      .getRawOne();
-    return parseInt(result?.cnt ?? '0', 10);
-  }
-
-  async getLessons(userId: string, query: any) {
-    const { status, unitNumber, search, page = 1, limit = 20 } = query;
+  async getLessons(query: any) {
+    const { status, unitId, search, page = 1, limit = 20 } = query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const where: any = { teacherId: userId };
+    const where: any = {};
     if (status) where.status = status;
-    if (unitNumber) where.unitNumber = Number(unitNumber);
-    if (search) where.title = ILike(`%${search}%`);
+    if (unitId) where.unitId = unitId;
+    if (search) where.lessonName = ILike(`%${search}%`);
 
     const [lessons, total] = await this.lessonRepo.findAndCount({
       where,
-      relations: ['group', 'blocks'],
-      order: { created_at: 'DESC' },
+      relations: ['unit'],
+      order: { createdAt: 'DESC' },
       skip,
       take: Number(limit),
     });
 
-    const allLessons = await this.lessonRepo.find({ where: { teacherId: userId } });
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const allLessons = await this.lessonRepo.find();
     const stats = {
       total: allLessons.length,
-      published: allLessons.filter((l) => l.status === 'published').length,
-      draft: allLessons.filter((l) => l.status === 'draft').length,
-      scheduled: allLessons.filter((l) => l.status === 'scheduled').length,
-      createdThisMonth: allLessons.filter((l) => new Date(l.created_at) >= startOfMonth).length,
+      published: allLessons.filter((l) => l.status === LessonStatus.published).length,
+      draft: allLessons.filter((l) => l.status === LessonStatus.draft).length,
+      archived: allLessons.filter((l) => l.status === LessonStatus.archived).length,
     };
 
-    const data = await Promise.all(
-      lessons.map(async (lesson) => {
-        const blockTypes = [...new Set(lesson.blocks.map((b) => b.type))];
-        const totalStudents = lesson.groupId ? await this.getGroupMemberCount(lesson.groupId) : 0;
-        return {
-          id: lesson.id,
-          title: lesson.title,
-          lessonCode: lesson.lessonCode,
-          unitNumber: lesson.unitNumber,
-          cefrLevel: lesson.cefrLevel,
-          status: lesson.status,
-          group: lesson.group ? { id: lesson.group.id, name: lesson.group.name, color: (lesson.group as any).color } : null,
-          blocksCount: lesson.blocks.length,
-          blockTypes,
-          studentsCompleted: 0,
-          totalStudents,
-          createdAt: lesson.created_at,
-          updatedAt: lesson.update_at,
-        };
-      }),
-    );
+    const data = lessons.map((lesson) => ({
+      id: lesson.id,
+      lessonNumber: lesson.lessonNumber,
+      lessonName: lesson.lessonName,
+      orderIndex: lesson.orderIndex,
+      status: lesson.status,
+      unit: lesson.unit ? { id: lesson.unit.id, number: lesson.unit.number, title: lesson.unit.title } : null,
+      createdAt: lesson.createdAt,
+      updatedAt: lesson.updatedAt,
+    }));
 
     return {
       stats,
@@ -103,151 +66,122 @@ export class TeacherLessonsService {
     };
   }
 
-  async createLesson(dto: CreateLessonDto, userId: string) {
-    if (dto.groupId) {
-      const group = await this.groupRepo.findOne({ where: { id: dto.groupId } });
-      if (!group) throw new BadRequestException("Guruh topilmadi");
-      if (group.teacherId !== userId) throw new BadRequestException("Bu guruh sizga tegishli emas");
-    }
-    const lesson = this.lessonRepo.create({ ...dto, groupId: dto.groupId ?? null, teacherId: userId, status: 'draft' });
+  async createLesson(dto: CreateLessonDto) {
+    const unit = await this.unitRepo.findOne({ where: { id: dto.unitId } });
+    if (!unit) throw new BadRequestException('Unit topilmadi');
+
+    const lesson = this.lessonRepo.create({
+      unitId: dto.unitId,
+      lessonName: dto.lessonName,
+      lessonNumber: dto.lessonNumber ?? null,
+      orderIndex: dto.orderIndex ?? 0,
+      status: LessonStatus.draft,
+    });
     const saved = await this.lessonRepo.save(lesson);
-    const group = dto.groupId ? await this.groupRepo.findOne({ where: { id: dto.groupId } }) : null;
+
     return {
-      id: saved.id, title: saved.title, lessonCode: saved.lessonCode, unitNumber: saved.unitNumber,
-      cefrLevel: saved.cefrLevel, status: saved.status,
-      group: group ? { id: group.id, name: group.name, color: (group as any).color } : null,
-      blocks: [], createdAt: saved.created_at,
+      id: saved.id,
+      lessonNumber: saved.lessonNumber,
+      lessonName: saved.lessonName,
+      orderIndex: saved.orderIndex,
+      status: saved.status,
+      unit: { id: unit.id, number: unit.number, title: unit.title },
+      createdAt: saved.createdAt,
     };
   }
 
-  async getLessonById(lessonId: string, userId: string) {
-    await this.verifyOwnership(lessonId, userId);
-
+  async getLessonById(lessonId: string) {
     const lesson = await this.lessonRepo.findOne({
       where: { id: lessonId },
-      relations: ['group', 'blocks', 'blocks.vocabBlock', 'blocks.vocabBlock.words', 'blocks.readingBlock', 'blocks.readingBlock.questions', 'blocks.listeningBlock', 'blocks.listeningBlock.questions', 'blocks.speakingBlock'],
+      relations: ['unit'],
     });
-
-    const blocks = await Promise.all(
-      (lesson!.blocks || []).sort((a, b) => a.order - b.order).map(async (block) => {
-        let grammar: any = null;
-        if (block.grammarId) {
-          const g = await this.grammarRepo.findOne({ where: { id: block.grammarId } });
-          if (g) grammar = { id: g.id, heading: g.heading, description: g.description, formula: g.formula, examples: g.examples, rules: g.rules, relatedWords: g.relatedWords, tip: g.tip };
-        }
-        return {
-          id: block.id, type: block.type, order: block.order, grammar,
-          vocabulary: block.vocabBlock ? {
-            id: block.vocabBlock.id, exerciseTypes: block.vocabBlock.exerciseTypes,
-            wordsCount: (block.vocabBlock.words || []).length,
-            words: (block.vocabBlock.words || []).sort((a, b) => a.order - b.order),
-          } : null,
-          reading: block.readingBlock ? {
-            id: block.readingBlock.id, title: block.readingBlock.title, author: block.readingBlock.author,
-            content: block.readingBlock.text, wordCount: block.readingBlock.wordCount,
-            readTimeMinutes: block.readingBlock.readTimeMinutes, cefrLevel: block.readingBlock.cefrLevel,
-            highlights: block.readingBlock.highlights,
-            questions: (block.readingBlock.questions || []).sort((a, b) => a.order - b.order),
-          } : null,
-          listening: block.listeningBlock ? {
-            id: block.listeningBlock.id, title: block.listeningBlock.title, audioUrl: block.listeningBlock.audioUrl,
-            duration: block.listeningBlock.duration, trackCode: block.listeningBlock.trackCode,
-            speakers: block.listeningBlock.speakers, transcript: block.listeningBlock.transcript,
-            questions: (block.listeningBlock.questions || []).sort((a, b) => a.order - b.order),
-          } : null,
-          speaking: block.speakingBlock ? {
-            id: block.speakingBlock.id, title: block.speakingBlock.title,
-            instructions: block.speakingBlock.instructions, topics: block.speakingBlock.topics,
-            examples: block.speakingBlock.examples, durationMinutes: block.speakingBlock.durationMinutes,
-          } : null,
-        };
-      }),
-    );
+    if (!lesson) throw new NotFoundException('Dars topilmadi');
 
     return {
-      id: lesson!.id, title: lesson!.title, lessonCode: lesson!.lessonCode,
-      unitNumber: lesson!.unitNumber, cefrLevel: lesson!.cefrLevel, status: lesson!.status,
-      group: lesson!.group ? { id: lesson!.group.id, name: lesson!.group.name, color: (lesson!.group as any).color } : null,
-      blocks,
+      id: lesson.id,
+      lessonNumber: lesson.lessonNumber,
+      lessonName: lesson.lessonName,
+      orderIndex: lesson.orderIndex,
+      status: lesson.status,
+      unit: lesson.unit ? { id: lesson.unit.id, number: lesson.unit.number, title: lesson.unit.title } : null,
+      createdAt: lesson.createdAt,
+      updatedAt: lesson.updatedAt,
     };
   }
 
-  async updateLesson(lessonId: string, dto: UpdateLessonDto, userId: string) {
-    const lesson = await this.verifyOwnership(lessonId, userId);
-    if ('groupId' in dto && dto.groupId) {
-      const group = await this.groupRepo.findOne({ where: { id: dto.groupId } });
-      if (!group) throw new BadRequestException("Guruh topilmadi");
-      if (group.teacherId !== userId) throw new BadRequestException("Bu guruh sizga tegishli emas");
+  async updateLesson(lessonId: string, dto: UpdateLessonDto) {
+    const lesson = await this.verifyLesson(lessonId);
+
+    if (dto.unitId && dto.unitId !== lesson.unitId) {
+      const unit = await this.unitRepo.findOne({ where: { id: dto.unitId } });
+      if (!unit) throw new BadRequestException('Unit topilmadi');
     }
+
     Object.assign(lesson, dto);
-    if ('groupId' in dto && dto.groupId === null) lesson.groupId = null;
     const saved = await this.lessonRepo.save(lesson);
-    const group = saved.groupId ? await this.groupRepo.findOne({ where: { id: saved.groupId } }) : null;
+
     return {
-      id: saved.id, title: saved.title, lessonCode: saved.lessonCode,
-      unitNumber: saved.unitNumber, cefrLevel: saved.cefrLevel, status: saved.status,
-      group: group ? { id: group.id, name: group.name, color: (group as any).color } : null,
-      updatedAt: saved.update_at,
+      id: saved.id,
+      lessonNumber: saved.lessonNumber,
+      lessonName: saved.lessonName,
+      orderIndex: saved.orderIndex,
+      status: saved.status,
+      updatedAt: saved.updatedAt,
     };
   }
 
-  async deleteLesson(lessonId: string, userId: string) {
-    const lesson = await this.verifyOwnership(lessonId, userId);
-    if (lesson.status !== 'draft') throw new BadRequestException("Faqat qoralama darsni o'chirib bo'ladi");
+  async deleteLesson(lessonId: string) {
+    const lesson = await this.verifyLesson(lessonId);
+    if (lesson.status !== LessonStatus.draft) throw new BadRequestException("Faqat qoralama darsni o'chirish mumkin");
     await this.lessonRepo.remove(lesson);
     return { message: "Dars o'chirildi" };
   }
 
-  async publishLesson(lessonId: string, userId: string) {
-    const lesson = await this.verifyOwnership(lessonId, userId);
-    const count = await this.blockRepo.count({ where: { lessonId } });
-    if (count === 0) throw new BadRequestException("Darsda kamida 1 ta blok bo'lishi kerak");
-    lesson.status = 'published';
+  async publishLesson(lessonId: string) {
+    const lesson = await this.verifyLesson(lessonId);
+    lesson.status = LessonStatus.published;
     await this.lessonRepo.save(lesson);
-    return { id: lesson.id, status: 'published' };
+    return { id: lesson.id, status: LessonStatus.published };
   }
 
-  async revertToDraft(lessonId: string, userId: string) {
-    const lesson = await this.verifyOwnership(lessonId, userId);
-    lesson.status = 'draft';
+  async revertToDraft(lessonId: string) {
+    const lesson = await this.verifyLesson(lessonId);
+    lesson.status = LessonStatus.draft;
     await this.lessonRepo.save(lesson);
-    return { id: lesson.id, status: 'draft' };
+    return { id: lesson.id, status: LessonStatus.draft };
   }
 
-  async duplicateLesson(lessonId: string, userId: string) {
-    const lesson = await this.lessonRepo.findOne({
-      where: { id: lessonId },
-      relations: ['blocks', 'blocks.vocabBlock', 'blocks.vocabBlock.words', 'blocks.readingBlock', 'blocks.readingBlock.questions', 'blocks.listeningBlock', 'blocks.listeningBlock.questions', 'blocks.speakingBlock'],
+  async duplicateLesson(lessonId: string) {
+    const original = await this.lessonRepo.findOne({ where: { id: lessonId } });
+    if (!original) throw new NotFoundException('Dars topilmadi');
+
+    const copy = this.lessonRepo.create({
+      unitId: original.unitId,
+      lessonName: `${original.lessonName} (copy)`,
+      lessonNumber: original.lessonNumber,
+      orderIndex: original.orderIndex + 1,
+      status: LessonStatus.draft,
     });
-    if (!lesson) throw new NotFoundException("Dars topilmadi");
-    if (lesson.teacherId !== userId) throw new ForbiddenException("Bu dars sizga tegishli emas");
+    const saved = await this.lessonRepo.save(copy);
 
-    const newLesson = this.lessonRepo.create({
-      title: lesson.title + ' (nusxa)', status: 'draft', teacherId: userId,
-      lessonCode: null, unitNumber: lesson.unitNumber, cefrLevel: lesson.cefrLevel, groupId: null,
-    });
-    const savedLesson = await this.lessonRepo.save(newLesson);
-
-    for (const block of lesson.blocks) {
-      const newBlock = this.blockRepo.create({ lessonId: savedLesson.id, type: block.type, order: block.order, grammarId: block.grammarId });
-      await this.blockRepo.save(newBlock);
-    }
-
-    return { id: savedLesson.id, title: savedLesson.title, status: 'draft', createdAt: savedLesson.created_at };
+    return {
+      id: saved.id,
+      lessonNumber: saved.lessonNumber,
+      lessonName: saved.lessonName,
+      orderIndex: saved.orderIndex,
+      status: saved.status,
+      createdAt: saved.createdAt,
+    };
   }
 
   async searchGrammar(query: any) {
-    const { search, cefrLevel, page = 1, limit = 20 } = query;
+    const { search, page = 1, limit = 20 } = query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    let qb = this.grammarRepo.createQueryBuilder('g').skip(skip).take(Number(limit));
-    if (search) qb = qb.where('g.heading ILIKE :s OR g.description ILIKE :s', { s: `%${search}%` });
-    if (cefrLevel) qb = qb.andWhere('g.cefrLevel = :cefrLevel', { cefrLevel });
-
-    const [data, total] = await qb.getManyAndCount();
+    const units = await this.unitRepo.find({ order: { number: 'ASC' } });
     return {
-      data: data.map((g) => ({ id: g.id, heading: g.heading, description: g.description, cefrLevel: g.cefrLevel, formula: g.formula, examples: g.examples })),
-      meta: { total, page: Number(page), limit: Number(limit) },
+      data: units.map((u) => ({ id: u.id, number: u.number, title: u.title })),
+      meta: { total: units.length, page: Number(page), limit: Number(limit) },
     };
   }
 }

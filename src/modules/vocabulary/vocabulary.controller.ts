@@ -12,16 +12,16 @@ import { Role } from 'src/common/utils/enum';
 export class VocabularyController {
   constructor(private readonly vocabularyService: VocabularyService) {}
 
-  /** GET /vocabulary?unitId=uuid&cefrLevel=B1&status=new */
+  /** GET /vocabulary?topic=xxx&cefrLevel=B1&status=new */
   @Get()
   @Roles(Role.student, Role.teacher, Role.admin)
   async getVocabulary(
     @Req() req: any,
-    @Query('unitId') unitId?: string,
+    @Query('topic') topic?: string,
     @Query('cefrLevel') cefrLevel?: string,
     @Query('status') status?: string,
   ) {
-    return this.vocabularyService.getVocabularyForStudent(req.user.sub, { unitId, cefrLevel, status });
+    return this.vocabularyService.getVocabularyForStudent(req.user.sub, { topic, cefrLevel, status });
   }
 
   /** POST /vocabulary/:wordId/review — SRS takrorlash */
@@ -43,14 +43,14 @@ export class VocabularyController {
 
   @Public()
   @Post('import-text')
-  async import_text(@Body('text') text: string, @Body('lesson_id') lessonId?: string) {
-    return this.vocabularyService.importFromText(text, lessonId);
+  async import_text(@Body('text') text: string) {
+    return this.vocabularyService.importFromText(text);
   }
 
   @Public()
   @Get('all')
   async getAll() {
-    return this.vocabularyService.findAllWithTranslations();
+    return this.vocabularyService.findAll();
   }
 
   @Public()

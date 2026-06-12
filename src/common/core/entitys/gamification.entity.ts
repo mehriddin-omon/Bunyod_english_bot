@@ -37,7 +37,7 @@ export class UserGamification extends BaseEntity {
 }
 
 @Entity({ name: 'xp_transactions' })
-@Index(['userId', 'created_at'])
+@Index(['userId', 'createdAt'])
 export class XpTransaction extends BaseEntity {
   @Column({ type: 'uuid', name: 'user_id' })
   userId: string;

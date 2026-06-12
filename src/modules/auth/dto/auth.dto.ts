@@ -18,7 +18,7 @@ export class RegisterDto {
 
   @IsString()
   @Matches(/^\+998\d{9}$/, { message: 'Telefon raqam +998XXXXXXXXX formatda bolishi kerak' })
-  phone: string;
+  phoneNumber: string;
 
   @IsString()
   @Matches(/^[a-zA-Z0-9_]{4,20}$/, { message: 'Login 4-20 ta lotin harfi, raqam yoki _ bolishi kerak' })
@@ -50,7 +50,7 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   @Matches(/^\+998\d{9}$/, { message: 'Telefon raqam +998XXXXXXXXX formatda bolishi kerak' })
-  phone?: string;
+  phoneNumber?: string;
 
   @IsOptional()
   @IsString()

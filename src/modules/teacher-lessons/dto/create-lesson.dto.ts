@@ -1,22 +1,17 @@
 import { IsString, IsOptional, IsNumber, IsUUID } from 'class-validator';
 
 export class CreateLessonDto {
+  @IsUUID()
+  unitId: string;
+
   @IsString()
-  title: string;
+  lessonName: string;
 
   @IsOptional()
   @IsString()
-  lessonCode?: string;
+  lessonNumber?: string;
 
   @IsOptional()
   @IsNumber()
-  unitNumber?: number;
-
-  @IsOptional()
-  @IsString()
-  cefrLevel?: string;
-
-  @IsOptional()
-  @IsUUID()
-  groupId?: string;
+  orderIndex?: number;
 }

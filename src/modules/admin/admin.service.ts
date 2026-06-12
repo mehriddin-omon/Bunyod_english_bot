@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from 'src/common/core/entitys/user.entity';
 import { Group } from 'src/common/core/entitys/group.entity';
-import { CurriculumLesson } from 'src/common/core/entitys/lesson.entity';
+import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { DailyTracking } from 'src/common/core/entitys/daily-tracking.entity';
 import { Role, GroupStatus } from 'src/common/utils/enum';
 import { UpdateUserDto } from './dto/admin.dto';
@@ -16,8 +16,8 @@ export class AdminService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Group)
     private readonly groupRepository: Repository<Group>,
-    @InjectRepository(CurriculumLesson)
-    private readonly lessonRepository: Repository<CurriculumLesson>,
+    @InjectRepository(Lesson)
+    private readonly lessonRepository: Repository<Lesson>,
     @InjectRepository(DailyTracking)
     private readonly dailyTrackingRepository: Repository<DailyTracking>,
   ) {}
@@ -42,39 +42,29 @@ export class AdminService {
 
   async updateUserRole(userId: string, role: Role): Promise<User> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
+    if (!user) throw new NotFoundException('User not found');
     user.role = role;
-    return await this.userRepository.save(user);
+    return this.userRepository.save(user);
   }
 
   async updateUser(userId: string, dto: UpdateUserDto): Promise<User> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
+    if (!user) throw new NotFoundException('User not found');
 
     if (dto.username && dto.username !== user.username) {
       const existing = await this.userRepository.findOne({ where: { username: dto.username } });
-      if (existing) {
-        throw new ConflictException('Username already taken');
-      }
+      if (existing) throw new ConflictException('Username already taken');
     }
 
     if (dto.firstName !== undefined) user.firstName = dto.firstName;
     if (dto.lastName !== undefined) user.lastName = dto.lastName;
     if (dto.username !== undefined) user.username = dto.username;
-    if (dto.phone !== undefined) user.phone = dto.phone;
+    if (dto.phoneNumber !== undefined) user.phoneNumber = dto.phoneNumber;
     if (dto.role !== undefined) user.role = dto.role;
-    if (dto.cefrLevel !== undefined) user.cefrLevel = dto.cefrLevel;
     if (dto.password !== undefined) {
       user.password = await bcrypt.hash(dto.password, 10);
     }
 
-    return await this.userRepository.save(user);
+    return this.userRepository.save(user);
   }
 }

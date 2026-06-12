@@ -1,71 +1,55 @@
-import { Column, Entity, ManyToOne, JoinColumn } from 'typeorm';
+import { Column, Entity, ManyToMany, JoinTable } from 'typeorm';
 import { BaseEntity } from './base.entity';
-import { PartOfSpeech, CefrLevel, VocabStatus } from 'src/common/utils/enum';
-import { User } from './user.entity';
-import { Unit } from './unit.entity';
+import { PartOfSpeech, CefrLevel } from 'src/common/utils/enum';
 
-@Entity('vocabulary_words')
-export class VocabularyWord extends BaseEntity {
+@Entity({ name: 'vocabularys' })
+export class Vocabulary extends BaseEntity {
   @Column({ type: 'varchar', name: 'word' })
   word: string;
 
-  @Column({ type: 'varchar', name: 'translation' })
-  translation: string;
-
-  @Column({ type: 'text', name: 'example', nullable: true })
-  example: string;
-
-  @Column({ type: 'varchar', name: 'cefr_level', enum: CefrLevel, nullable: true })
-  cefrLevel: CefrLevel;
+  @Column({ type: 'varchar', name: 'ipa', nullable: true })
+  ipa: string | null;
 
   @Column({ type: 'varchar', name: 'pos', enum: PartOfSpeech, nullable: true })
-  pos: PartOfSpeech;
+  pos: PartOfSpeech | null;
 
-  @Column({ type: 'simple-array', name: 'synonyms', nullable: true })
-  synonyms: string[];
+  @Column({ type: 'text', name: 'uzbek_translation', nullable: true })
+  uzbekTranslation: string | null;
 
-  @Column({ type: 'simple-array', name: 'antonyms', nullable: true })
-  antonyms: string[];
+  @Column({ type: 'varchar', name: 'topic', nullable: true })
+  topic: string | null;
 
-  @Column({ type: 'uuid', name: 'unit_id', nullable: true })
-  unitId: string;
+  @Column({ type: 'varchar', name: 'cefr_level', enum: CefrLevel, nullable: true })
+  cefrLevel: CefrLevel | null;
 
-  @ManyToOne(() => Unit, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'unit_id' })
-  unit: Unit;
-}
+  @Column({ type: 'varchar', name: 'lang', default: 'en' })
+  lang: string;
 
-@Entity('vocabulary_reviews')
-export class VocabularyReview extends BaseEntity {
-  @Column({ type: 'uuid', name: 'user_id' })
-  userId: string;
+  @Column({ type: 'varchar', name: 'voice_file_id', nullable: true })
+  voiceFileId: string | null;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'user_id' })
-  user: User;
+  @Column({ type: 'varchar', name: 'image_url', nullable: true })
+  imageUrl: string | null;
 
-  @Column({ type: 'uuid', name: 'word_id' })
-  wordId: string;
+  @Column({ type: 'text', name: 'example', nullable: true })
+  example: string | null;
 
-  @ManyToOne(() => VocabularyWord, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'word_id' })
-  word: VocabularyWord;
+  @Column({ type: 'bigint', name: 'order_index', default: 0 })
+  orderIndex: number;
 
-  @Column({ type: 'varchar', name: 'status', enum: VocabStatus, default: VocabStatus.new })
-  status: VocabStatus;
+  @ManyToMany(() => Vocabulary)
+  @JoinTable({
+    name: 'vocabulary_synonyms',
+    joinColumn: { name: 'vocabulary_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'synonym_id', referencedColumnName: 'id' },
+  })
+  synonyms: Vocabulary[];
 
-  @Column({ type: 'int', name: 'repetitions', default: 0 })
-  repetitions: number;
-
-  @Column({ type: 'float', name: 'ease_factor', default: 2.5 })
-  easeFactor: number;
-
-  @Column({ type: 'int', name: 'interval', default: 1 })
-  interval: number;
-
-  @Column({ type: 'timestamptz', name: 'next_review_at', nullable: true })
-  nextReviewAt: Date;
-
-  @Column({ type: 'timestamptz', name: 'last_review_at', nullable: true })
-  lastReviewAt: Date;
+  @ManyToMany(() => Vocabulary)
+  @JoinTable({
+    name: 'vocabulary_antonyms',
+    joinColumn: { name: 'vocabulary_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'antonym_id', referencedColumnName: 'id' },
+  })
+  antonyms: Vocabulary[];
 }

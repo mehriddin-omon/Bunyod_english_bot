@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { VocabularyWord, VocabularyReview } from 'src/common/core/entitys/vocabulary.entity';
+import { Vocabulary } from 'src/common/core/entitys/vocabulary.entity';
+import { UserVocabularyProgress } from 'src/common/core/entitys/user-vocabulary-progress.entity';
 import { VocabularyService } from './vocabulary.service';
 import { VocabularyController } from './vocabulary.controller';
 import { GuardModule } from '@my/common';
@@ -8,7 +9,7 @@ import { GuardModule } from '@my/common';
 @Module({
   imports: [
     GuardModule,
-    TypeOrmModule.forFeature([VocabularyWord, VocabularyReview]),
+    TypeOrmModule.forFeature([Vocabulary, UserVocabularyProgress]),
   ],
   providers: [VocabularyService],
   controllers: [VocabularyController],

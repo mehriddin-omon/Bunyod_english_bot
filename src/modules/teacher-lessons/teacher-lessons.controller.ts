@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -14,52 +14,52 @@ export class TeacherLessonsController {
 
   @Get('lessons')
   @Roles(Role.teacher, Role.admin)
-  getLessons(@Request() req, @Query() query: any) {
-    return this.svc.getLessons(req.user.sub, query);
+  getLessons(@Query() query: any) {
+    return this.svc.getLessons(query);
   }
 
   @Post('lessons')
   @Roles(Role.teacher, Role.admin)
   @HttpCode(HttpStatus.CREATED)
-  createLesson(@Body() dto: CreateLessonDto, @Request() req) {
-    return this.svc.createLesson(dto, req.user.sub);
+  createLesson(@Body() dto: CreateLessonDto) {
+    return this.svc.createLesson(dto);
   }
 
   @Get('lessons/:id')
   @Roles(Role.teacher, Role.admin)
-  getLessonById(@Param('id') id: string, @Request() req) {
-    return this.svc.getLessonById(id, req.user.sub);
+  getLessonById(@Param('id') id: string) {
+    return this.svc.getLessonById(id);
   }
 
   @Put('lessons/:id')
   @Roles(Role.teacher, Role.admin)
-  updateLesson(@Param('id') id: string, @Body() dto: UpdateLessonDto, @Request() req) {
-    return this.svc.updateLesson(id, dto, req.user.sub);
+  updateLesson(@Param('id') id: string, @Body() dto: UpdateLessonDto) {
+    return this.svc.updateLesson(id, dto);
   }
 
   @Delete('lessons/:id')
   @Roles(Role.teacher, Role.admin)
-  deleteLesson(@Param('id') id: string, @Request() req) {
-    return this.svc.deleteLesson(id, req.user.sub);
+  deleteLesson(@Param('id') id: string) {
+    return this.svc.deleteLesson(id);
   }
 
   @Put('lessons/:id/publish')
   @Roles(Role.teacher, Role.admin)
-  publishLesson(@Param('id') id: string, @Request() req) {
-    return this.svc.publishLesson(id, req.user.sub);
+  publishLesson(@Param('id') id: string) {
+    return this.svc.publishLesson(id);
   }
 
   @Put('lessons/:id/draft')
   @Roles(Role.teacher, Role.admin)
-  revertToDraft(@Param('id') id: string, @Request() req) {
-    return this.svc.revertToDraft(id, req.user.sub);
+  revertToDraft(@Param('id') id: string) {
+    return this.svc.revertToDraft(id);
   }
 
   @Post('lessons/:id/duplicate')
   @Roles(Role.teacher, Role.admin)
   @HttpCode(HttpStatus.CREATED)
-  duplicateLesson(@Param('id') id: string, @Request() req) {
-    return this.svc.duplicateLesson(id, req.user.sub);
+  duplicateLesson(@Param('id') id: string) {
+    return this.svc.duplicateLesson(id);
   }
 
   @Get('grammar')

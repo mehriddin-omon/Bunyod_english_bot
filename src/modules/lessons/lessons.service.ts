@@ -1,31 +1,42 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CurriculumLesson } from 'src/common/core/entitys/lesson.entity';
+import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { Unit } from 'src/common/core/entitys/unit.entity';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
-import { LessonProgressStatus, LessonType, Role } from 'src/common/utils/enum';
+import { GrammarContent } from 'src/common/core/entitys/grammar-content.entity';
+import { ReadingContent } from 'src/common/core/entitys/reading-content.entity';
+import { ListeningContent } from 'src/common/core/entitys/listening-content.entity';
+import { LessonProgressStatus, Role } from 'src/common/utils/enum';
 
 @Injectable()
 export class LessonsService {
   constructor(
-    @InjectRepository(CurriculumLesson)
-    private readonly lessonRepo: Repository<CurriculumLesson>,
+    @InjectRepository(Lesson)
+    private readonly lessonRepo: Repository<Lesson>,
 
     @InjectRepository(Unit)
     private readonly unitRepo: Repository<Unit>,
 
     @InjectRepository(LessonProgress)
     private readonly progressRepo: Repository<LessonProgress>,
+
+    @InjectRepository(GrammarContent)
+    private readonly grammarRepo: Repository<GrammarContent>,
+
+    @InjectRepository(ReadingContent)
+    private readonly readingRepo: Repository<ReadingContent>,
+
+    @InjectRepository(ListeningContent)
+    private readonly listeningRepo: Repository<ListeningContent>,
   ) {}
 
   async getUnits(userId: string, role: Role) {
     const units = await this.unitRepo.find({ order: { number: 'ASC' } });
     const allLessons = await this.lessonRepo.find({ order: { unitId: 'ASC', orderIndex: 'ASC' } });
 
-    const lessonsByUnit = new Map<string, CurriculumLesson[]>();
+    const lessonsByUnit = new Map<string, Lesson[]>();
     allLessons.forEach((l) => {
-      if (!l.unitId) return;
       if (!lessonsByUnit.has(l.unitId)) lessonsByUnit.set(l.unitId, []);
       lessonsByUnit.get(l.unitId)!.push(l);
     });
@@ -41,55 +52,32 @@ export class LessonsService {
       const lessonCount = lessons.length;
 
       if (role !== Role.student) {
-        return {
-          id: unit.id,
-          number: unit.number,
-          title: unit.title,
-          lessonCount,
-          progress: 0,
-          status: 'current',
-          currentLesson: null,
-        };
+        return { id: unit.id, number: unit.number, title: unit.title, lessonCount, progress: 0, status: 'current', currentLesson: null };
       }
 
       const completedCount = lessons.filter(
         (l) => progressMap.get(l.id)?.status === LessonProgressStatus.completed,
       ).length;
 
-      const progress =
-        lessonCount > 0 ? Math.round((completedCount / lessonCount) * 100) : 0;
+      const progress = lessonCount > 0 ? Math.round((completedCount / lessonCount) * 100) : 0;
 
       let status: string;
       if (completedCount === lessonCount && lessonCount > 0) {
         status = 'completed';
-      } else if (
-        completedCount > 0 ||
-        lessons.some(
-          (l) => progressMap.get(l.id)?.status === LessonProgressStatus.in_progress,
-        )
-      ) {
+      } else if (completedCount > 0 || lessons.some((l) => progressMap.get(l.id)?.status === LessonProgressStatus.in_progress)) {
         status = 'current';
       } else if (index === 0) {
         status = 'current';
       } else {
         const prevUnit = units[index - 1];
-        const prevLessons = (prevUnit.lessons || []);
-        const prevCompleted = prevLessons.filter(
-          (l) => progressMap.get(l.id)?.status === LessonProgressStatus.completed,
-        ).length;
-        status =
-          prevLessons.length > 0 && prevCompleted === prevLessons.length
-            ? 'current'
-            : 'locked';
+        const prevLessons = lessonsByUnit.get(prevUnit.id) || [];
+        const prevCompleted = prevLessons.filter((l) => progressMap.get(l.id)?.status === LessonProgressStatus.completed).length;
+        status = prevLessons.length > 0 && prevCompleted === prevLessons.length ? 'current' : 'locked';
       }
 
-      const currentLesson =
-        status !== 'completed'
-          ? lessons.find((l) => {
-              const p = progressMap.get(l.id);
-              return !p || p.status !== LessonProgressStatus.completed;
-            }) ?? null
-          : null;
+      const currentLesson = status !== 'completed'
+        ? lessons.find((l) => { const p = progressMap.get(l.id); return !p || p.status !== LessonProgressStatus.completed; }) ?? null
+        : null;
 
       return {
         id: unit.id,
@@ -99,12 +87,7 @@ export class LessonsService {
         progress,
         status,
         currentLesson: currentLesson
-          ? {
-              id: currentLesson.id,
-              lessonCode: `${unit.number}.${currentLesson.lessonNumber}`,
-              title: currentLesson.lessonName,
-              type: currentLesson.lessonType,
-            }
+          ? { id: currentLesson.id, lessonCode: `${unit.number}.${currentLesson.lessonNumber}`, title: currentLesson.lessonName }
           : null,
       };
     });
@@ -116,9 +99,7 @@ export class LessonsService {
     const unit = await this.unitRepo.findOne({ where: { id: unitId } });
     if (!unit) throw new NotFoundException('Unit topilmadi');
 
-    const lessons = (
-      await this.lessonRepo.find({ where: { unitId }, order: { orderIndex: 'ASC' } })
-    );
+    const lessons = await this.lessonRepo.find({ where: { unitId }, order: { orderIndex: 'ASC' } });
 
     const progressMap = new Map<string, LessonProgress>();
     if (role === Role.student) {
@@ -140,9 +121,7 @@ export class LessonsService {
         status = 'current';
       } else {
         const prev = lessons[index - 1];
-        const prevProgress = progressMap.get(prev.id);
-        status =
-          prevProgress?.status === LessonProgressStatus.completed ? 'current' : 'locked';
+        status = progressMap.get(prev.id)?.status === LessonProgressStatus.completed ? 'current' : 'locked';
       }
 
       return {
@@ -150,64 +129,75 @@ export class LessonsService {
         number: lesson.orderIndex,
         lessonCode: `${unit.number}.${lesson.lessonNumber}`,
         title: lesson.lessonName,
-        type: lesson.lessonType,
-        duration: lesson.durationMinutes,
         status,
         score: progress?.score ?? null,
       };
     });
 
-    return {
-      unit: { id: unit.id, number: unit.number, title: unit.title },
-      lessons: lessonResults,
-    };
+    return { unit: { id: unit.id, number: unit.number, title: unit.title }, lessons: lessonResults };
   }
 
-  async getLesson(lessonId: string, userId: string) {
+  async getLessonPages(lessonId: string) {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
+    const pages = await this.grammarRepo.find({ where: { lessonId }, order: { createdAt: 'ASC' } });
+    return { lessonId, pages };
+  }
 
-    const [progress, unit] = await Promise.all([
-      this.progressRepo.findOne({ where: { userId, lessonId } }),
-      lesson.unitId ? this.unitRepo.findOne({ where: { id: lesson.unitId } }) : null,
+  async getLessonContent(lessonId: string) {
+    const lesson = await this.lessonRepo.findOne({ where: { id: lessonId }, relations: ['unit'] });
+    if (!lesson) throw new NotFoundException('Dars topilmadi');
+    const [grammar, reading, listening] = await Promise.all([
+      this.grammarRepo.find({ where: { lessonId } }),
+      this.readingRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } }),
+      this.listeningRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } }),
     ]);
-
     return {
       id: lesson.id,
-      lessonCode: unit
-        ? `${unit.number}.${lesson.lessonNumber}`
-        : lesson.lessonNumber,
       title: lesson.lessonName,
-      type: lesson.lessonType,
-      duration: lesson.durationMinutes,
-      content: lesson.content,
-      userProgress: progress
-        ? {
-            status: progress.status,
-            score: progress.score,
-            attempts: progress.attempts,
-            timeSpent: progress.timeSpentSec,
-          }
-        : null,
-      outline: [],
+      grammar: { count: grammar.length, items: grammar.map((g) => ({ id: g.id, pageName: g.pageName })) },
+      reading: { count: reading.length, items: reading.map((r) => ({ id: r.id, title: r.title, wordCount: r.wordCount })) },
+      listening: { count: listening.length, items: listening.map((l) => ({ id: l.id, title: l.title, durationSeconds: l.durationSeconds })) },
     };
   }
 
   async getReadingContent(lessonId: string) {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
-    if (lesson.lessonType !== LessonType.reading) {
-      throw new BadRequestException('Bu dars reading turida emas');
-    }
-    return lesson.content;
+    const content = await this.readingRepo.find({
+      where: { lessonId },
+      relations: ['questions', 'questions.options'],
+      order: { orderIndex: 'ASC' },
+    });
+    return { lessonId, content };
   }
 
   async getListeningContent(lessonId: string) {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
-    if (lesson.lessonType !== LessonType.listening) {
-      throw new BadRequestException('Bu dars listening turida emas');
-    }
-    return lesson.content;
+    const content = await this.listeningRepo.find({
+      where: { lessonId },
+      relations: ['transcripts', 'questions', 'questions.options'],
+      order: { orderIndex: 'ASC' },
+    });
+    return { lessonId, content };
+  }
+
+  async getLesson(lessonId: string, userId: string) {
+    const lesson = await this.lessonRepo.findOne({ where: { id: lessonId }, relations: ['unit'] });
+    if (!lesson) throw new NotFoundException('Dars topilmadi');
+
+    const progress = await this.progressRepo.findOne({ where: { userId, lessonId } });
+
+    return {
+      id: lesson.id,
+      lessonCode: lesson.unit ? `${lesson.unit.number}.${lesson.lessonNumber}` : lesson.lessonNumber,
+      title: lesson.lessonName,
+      orderIndex: lesson.orderIndex,
+      status: lesson.status,
+      userProgress: progress
+        ? { status: progress.status, score: progress.score, attempts: progress.attempts, timeSpent: progress.timeSpentSec }
+        : null,
+    };
   }
 }

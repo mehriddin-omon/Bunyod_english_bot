@@ -38,6 +38,18 @@ export class LessonsController {
     return this.lessonsService.getListeningContent(lessonId);
   }
 
+  /** GET /lessons/:lessonId/pages */
+  @Get(':lessonId/pages')
+  async getLessonPages(@Param('lessonId') lessonId: string) {
+    return this.lessonsService.getLessonPages(lessonId);
+  }
+
+  /** GET /lessons/:lessonId/content */
+  @Get(':lessonId/content')
+  async getLessonContent(@Param('lessonId') lessonId: string) {
+    return this.lessonsService.getLessonContent(lessonId);
+  }
+
   /** GET /lessons/:lessonId */
   @Get(':lessonId')
   async getLesson(@Param('lessonId') lessonId: string, @Req() req: any) {

@@ -30,8 +30,10 @@ export class AuthService {
     const existingUsername = await this.userRepository.findOne({ where: { username: dto.username } });
     if (existingUsername) throw new ConflictException('Bu username band');
 
-    const existingPhone = await this.userRepository.findOne({ where: { phone: dto.phone } });
-    if (existingPhone) throw new ConflictException('Bu telefon raqam band');
+    if (dto.phoneNumber) {
+      const existingPhone = await this.userRepository.findOne({ where: { phoneNumber: dto.phoneNumber } });
+      if (existingPhone) throw new ConflictException('Bu telefon raqam band');
+    }
 
     const role = dto.role === Role.admin ? Role.student : (dto.role ?? Role.student);
     const hashedPassword = await bcrypt.hash(dto.password, 10);
@@ -42,7 +44,7 @@ export class AuthService {
         lastName: dto.lastName,
         username: dto.username,
         password: hashedPassword,
-        phone: dto.phone,
+        phoneNumber: dto.phoneNumber,
         role,
       }),
     );
@@ -58,11 +60,7 @@ export class AuthService {
     user.refreshToken = await bcrypt.hash(refreshToken, 10);
     await this.userRepository.save(user);
 
-    return {
-      accessToken,
-      refreshToken,
-      user: this.formatUser(user),
-    };
+    return { accessToken, refreshToken, user: this.formatUser(user) };
   }
 
   async login(dto: LoginDto) {
@@ -143,22 +141,23 @@ export class AuthService {
 
     if (dto.firstName !== undefined) user.firstName = dto.firstName;
     if (dto.lastName !== undefined) user.lastName = dto.lastName;
-    if (dto.phone !== undefined) user.phone = dto.phone;
+    if (dto.phoneNumber !== undefined) user.phoneNumber = dto.phoneNumber;
     if (dto.username !== undefined) user.username = dto.username;
 
     const saved = await this.userRepository.save(user);
     return { message: 'Profil yangilandi', user: this.formatUser(saved) };
   }
 
-  private formatUser(user: User) {
+  formatUser(user: User) {
     return {
       id: user.id,
       firstName: user.firstName,
       lastName: user.lastName,
       username: user.username,
-      phone: user.phone,
+      phoneNumber: user.phoneNumber,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
       role: user.role,
-      cefrLevel: user.cefrLevel ?? null,
     };
   }
 }

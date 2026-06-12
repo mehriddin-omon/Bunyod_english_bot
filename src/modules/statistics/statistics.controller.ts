@@ -48,18 +48,15 @@ export class StatisticsController {
     data: {
       userId: string;
       lessonId: string;
-      progress: number;
       score?: number;
-      correctAnswers?: number;
-      totalQuestions?: number;
+      status?: string;
+      timeSpentSec?: number;
     },
   ) {
     return this.statisticsService.updateProgress(data.userId, data.lessonId, {
-      progress: data.progress,
       score: data.score,
-      correctAnswers: data.correctAnswers,
-      totalQuestions: data.totalQuestions,
-      completedAt: data.progress === 100 ? new Date() : undefined,
+      status: data.status as any,
+      timeSpentSec: data.timeSpentSec,
     });
   }
 }

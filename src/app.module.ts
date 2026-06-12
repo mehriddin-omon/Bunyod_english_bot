@@ -17,6 +17,8 @@ import { GamificationModule } from './modules/gamification/gamification.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { LessonsModule } from './modules/lessons/lessons.module';
 import { TeacherLessonsModule } from './modules/teacher-lessons/teacher-lessons.module';
+import { SectionsModule } from './modules/sections/sections.module';
+import { HomeModule } from './modules/home/home.module';
 
 @Module({
   imports: [
@@ -49,6 +51,8 @@ import { TeacherLessonsModule } from './modules/teacher-lessons/teacher-lessons.
     NotificationsModule,
     LessonsModule,
     TeacherLessonsModule,
+    SectionsModule,
+    HomeModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: ResponseTransformInterceptor },

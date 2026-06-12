@@ -56,16 +56,18 @@ export class UserService {
       );
     }
 
-    if (query.cefrLevel) qb.andWhere('user.cefr_level = :cefrLevel', { cefrLevel: query.cefrLevel });
-
     if (query.search) {
       qb.andWhere(
-        '(user.username ILIKE :search OR user.first_name ILIKE :search OR user.last_name ILIKE :search OR user.phone ILIKE :search)',
+        '(user.username ILIKE :search OR user.first_name ILIKE :search OR user.last_name ILIKE :search OR user.phone_number ILIKE :search)',
         { search: `%${query.search}%` },
       );
     }
 
-    const [users, total] = await qb.orderBy('"user"."created_at"', 'DESC').skip(skip).take(limit).getManyAndCount();
+    const [users, total] = await qb
+      .orderBy('"user"."created_at"', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
 
     return {
       data: users.map((u) => this.formatUser(u)),
@@ -96,9 +98,7 @@ export class UserService {
 
     return {
       ...this.formatUser(user),
-      group: group
-        ? { id: group.id, name: group.name, color: group.color, cefrLevel: group.cefrLevel, status: group.status }
-        : null,
+      group: group ? { id: group.id, name: group.name, color: group.color, status: group.status } : null,
       gamification: gamification
         ? { xp: gamification.xpTotal, level: gamification.level, league: gamification.league, streak: gamification.streakCurrent }
         : null,
@@ -115,8 +115,8 @@ export class UserService {
     const existingUsername = await this.userRepo.findOne({ where: { username: dto.username } });
     if (existingUsername) throw new ConflictException('Bu username allaqachon band');
 
-    if (dto.phone) {
-      const existingPhone = await this.userRepo.findOne({ where: { phone: dto.phone } });
+    if (dto.phoneNumber) {
+      const existingPhone = await this.userRepo.findOne({ where: { phoneNumber: dto.phoneNumber } });
       if (existingPhone) throw new ConflictException('Bu telefon raqam allaqachon band');
     }
 
@@ -126,9 +126,9 @@ export class UserService {
         lastName: dto.lastName,
         username: dto.username,
         password: await bcrypt.hash(dto.password, 10),
-        phone: dto.phone,
+        phoneNumber: dto.phoneNumber,
         role: targetRole,
-        created_by: requesterId,
+        createdBy: requesterId,
       }),
     );
 
@@ -149,18 +149,17 @@ export class UserService {
       if (existing) throw new ConflictException('Bu username allaqachon band');
     }
 
-    if (dto.phone && dto.phone !== user.phone) {
-      const existing = await this.userRepo.findOne({ where: { phone: dto.phone } });
+    if (dto.phoneNumber && dto.phoneNumber !== user.phoneNumber) {
+      const existing = await this.userRepo.findOne({ where: { phoneNumber: dto.phoneNumber } });
       if (existing) throw new ConflictException('Bu telefon raqam allaqachon band');
     }
 
-    if (dto.firstName) user.firstName = dto.firstName;
-    if (dto.lastName) user.lastName = dto.lastName;
-    if (dto.username) user.username = dto.username;
-    if (dto.phone) user.phone = dto.phone;
-    if (dto.cefrLevel) user.cefrLevel = dto.cefrLevel;
-    if (dto.role) user.role = dto.role;
-    if (dto.password) user.password = await bcrypt.hash(dto.password, 10);
+    if (dto.firstName !== undefined) user.firstName = dto.firstName;
+    if (dto.lastName !== undefined) user.lastName = dto.lastName;
+    if (dto.username !== undefined) user.username = dto.username;
+    if (dto.phoneNumber !== undefined) user.phoneNumber = dto.phoneNumber;
+    if (dto.role !== undefined) user.role = dto.role;
+    if (dto.password !== undefined) user.password = await bcrypt.hash(dto.password, 10);
 
     return this.formatUser(await this.userRepo.save(user));
   }
@@ -187,10 +186,11 @@ export class UserService {
       firstName: user.firstName,
       lastName: user.lastName,
       username: user.username,
-      phone: user.phone,
+      phoneNumber: user.phoneNumber,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
       role: user.role,
-      cefrLevel: user.cefrLevel ?? null,
-      createdAt: user.created_at,
+      createdAt: user.createdAt,
     };
   }
 }

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsUUID, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsIn } from 'class-validator';
 
 export class CreateBlockDto {
   @IsString()
@@ -6,6 +6,6 @@ export class CreateBlockDto {
   type: 'grammar' | 'vocabulary' | 'reading' | 'listening' | 'speaking' | 'quiz';
 
   @IsOptional()
-  @IsUUID()
-  grammarId?: string;
+  @IsString()
+  grammarPage?: string;
 }

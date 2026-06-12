@@ -1,16 +1,15 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Lesson } from 'src/common/core/entitys/teacher-lesson.entity';
-import { LessonBlock } from 'src/common/core/entitys/teacher-lesson-block.entity';
-import { LessonVocab } from 'src/common/core/entitys/teacher-lesson-vocab.entity';
-import { LessonVocabWord } from 'src/common/core/entitys/teacher-lesson-vocab-word.entity';
-import { LessonReading } from 'src/common/core/entitys/teacher-lesson-reading.entity';
-import { LessonReadingQuestion } from 'src/common/core/entitys/teacher-lesson-reading-question.entity';
-import { LessonListening } from 'src/common/core/entitys/teacher-lesson-listening.entity';
-import { LessonListeningQuestion } from 'src/common/core/entitys/teacher-lesson-listening-question.entity';
-import { LessonSpeaking } from 'src/common/core/entitys/teacher-lesson-speaking.entity';
-import { Grammar } from 'src/common/core/entitys/grammar.entity';
-import { Group } from 'src/common/core/entitys/group.entity';
+import { Lesson } from 'src/common/core/entitys/lesson.entity';
+import { Unit } from 'src/common/core/entitys/unit.entity';
+import { GrammarContent } from 'src/common/core/entitys/grammar-content.entity';
+import { ReadingContent } from 'src/common/core/entitys/reading-content.entity';
+import { ReadingQuestion } from 'src/common/core/entitys/reading-question.entity';
+import { ReadingOption } from 'src/common/core/entitys/reading-option.entity';
+import { ListeningContent } from 'src/common/core/entitys/listening-content.entity';
+import { ListeningTranscript } from 'src/common/core/entitys/listening-transcript.entity';
+import { ListeningQuestion } from 'src/common/core/entitys/listening-question.entity';
+import { ListeningOption } from 'src/common/core/entitys/listening-option.entity';
 import { TeacherLessonsService } from './teacher-lessons.service';
 import { BlocksService } from './blocks.service';
 import { TeacherLessonsController } from './teacher-lessons.controller';
@@ -20,16 +19,15 @@ import { BlocksController } from './blocks.controller';
   imports: [
     TypeOrmModule.forFeature([
       Lesson,
-      LessonBlock,
-      LessonVocab,
-      LessonVocabWord,
-      LessonReading,
-      LessonReadingQuestion,
-      LessonListening,
-      LessonListeningQuestion,
-      LessonSpeaking,
-      Grammar,
-      Group,
+      Unit,
+      GrammarContent,
+      ReadingContent,
+      ReadingQuestion,
+      ReadingOption,
+      ListeningContent,
+      ListeningTranscript,
+      ListeningQuestion,
+      ListeningOption,
     ]),
   ],
   providers: [TeacherLessonsService, BlocksService],

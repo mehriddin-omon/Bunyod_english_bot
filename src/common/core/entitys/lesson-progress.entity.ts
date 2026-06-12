@@ -1,7 +1,7 @@
 import { Entity, Column, ManyToOne, Index } from 'typeorm';
-import { BaseEntity } from 'src/common/core/entitys/base.entity';
-import { User } from 'src/common/core/entitys/user.entity';
-import { CurriculumLesson } from 'src/common/core/entitys/lesson.entity';
+import { BaseEntity } from './base.entity';
+import { User } from './user.entity';
+import { Lesson } from './lesson.entity';
 import { LessonProgressStatus } from 'src/common/utils/enum';
 
 @Entity({ name: 'lesson_progress' })
@@ -16,30 +16,36 @@ export class LessonProgress extends BaseEntity {
   @Column({ type: 'uuid', name: 'lesson_id' })
   lessonId: string;
 
-  @ManyToOne(() => CurriculumLesson, { onDelete: 'CASCADE' })
-  lesson: CurriculumLesson;
+  @ManyToOne(() => Lesson, { onDelete: 'CASCADE' })
+  lesson: Lesson;
 
   @Column({ type: 'varchar', name: 'status', enum: LessonProgressStatus, default: LessonProgressStatus.not_started })
   status: LessonProgressStatus;
 
-  @Column({ type: 'integer', name: 'progress', default: 0, comment: '0–100' })
-  progress: number;
+  @Column({ type: 'int', name: 'score', nullable: true })
+  score: number | null;
 
-  @Column({ type: 'integer', name: 'score', nullable: true })
-  score?: number;
+  @Column({ type: 'int', name: 'grammar_score', nullable: true })
+  grammarScore: number | null;
 
-  @Column({ type: 'integer', name: 'total_questions', nullable: true })
-  totalQuestions?: number;
+  @Column({ type: 'int', name: 'vocabulary_score', nullable: true })
+  vocabularyScore: number | null;
 
-  @Column({ type: 'integer', name: 'correct_answers', nullable: true })
-  correctAnswers?: number;
+  @Column({ type: 'int', name: 'listening_score', nullable: true })
+  listeningScore: number | null;
 
-  @Column({ type: 'integer', name: 'time_spent_sec', default: 0 })
+  @Column({ type: 'int', name: 'reading_score', nullable: true })
+  readingScore: number | null;
+
+  @Column({ type: 'int', name: 'speaking_score', nullable: true })
+  speakingScore: number | null;
+
+  @Column({ type: 'int', name: 'time_spent_sec', default: 0 })
   timeSpentSec: number;
 
-  @Column({ type: 'integer', name: 'attempts', default: 1 })
+  @Column({ type: 'int', name: 'attempts', default: 1 })
   attempts: number;
 
   @Column({ type: 'timestamptz', name: 'completed_at', nullable: true })
-  completedAt?: Date;
+  completedAt: Date | null;
 }

@@ -7,14 +7,29 @@ import * as bcrypt from 'bcrypt';
 
 // ── Entities ──────────────────────────────────────────────────────────────────
 import { User } from 'src/common/core/entitys/user.entity';
-import { UserGamification } from 'src/common/core/entitys/gamification.entity';
+import { StudentProfile } from 'src/common/core/entitys/student-profile.entity';
+import { TeacherProfile } from 'src/common/core/entitys/teacher-profile.entity';
+import { UserGamification, XpTransaction, UserSkill } from 'src/common/core/entitys/gamification.entity';
 import { Achievement } from 'src/common/core/entitys/achievement.entity';
 import { Unit } from 'src/common/core/entitys/unit.entity';
-import { CurriculumLesson } from 'src/common/core/entitys/lesson.entity';
+import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { Group } from 'src/common/core/entitys/group.entity';
 import { Schedule } from 'src/common/core/entitys/schedule.entity';
-import { VocabularyWord, VocabularyReview } from 'src/common/core/entitys/vocabulary.entity';
+import { Vocabulary } from 'src/common/core/entitys/vocabulary.entity';
+import { VocabularyExample } from 'src/common/core/entitys/vocabulary-example.entity';
+import { UserVocabularyProgress } from 'src/common/core/entitys/user-vocabulary-progress.entity';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
+import { Notification } from 'src/common/core/entitys/notification.entity';
+import { DailyTracking } from 'src/common/core/entitys/daily-tracking.entity';
+import { GrammarContent } from 'src/common/core/entitys/grammar-content.entity';
+import { ReadingContent } from 'src/common/core/entitys/reading-content.entity';
+import { ReadingQuestion } from 'src/common/core/entitys/reading-question.entity';
+import { ReadingOption } from 'src/common/core/entitys/reading-option.entity';
+import { ListeningContent } from 'src/common/core/entitys/listening-content.entity';
+import { ListeningTranscript } from 'src/common/core/entitys/listening-transcript.entity';
+import { ListeningQuestion } from 'src/common/core/entitys/listening-question.entity';
+import { ListeningOption } from 'src/common/core/entitys/listening-option.entity';
+import { Assignment } from 'src/common/core/entitys/assignment.entity';
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 import {
@@ -32,16 +47,17 @@ const ds = new DataSource({
   type: 'postgres',
   url: process.env.DB_URL,
   entities: [
-    User,
-    UserGamification,
+    User, StudentProfile, TeacherProfile,
+    UserGamification, XpTransaction, UserSkill,
     Achievement,
-    Unit,
-    CurriculumLesson,
-    LessonProgress,
-    Group,
-    Schedule,
-    VocabularyWord,
-    VocabularyReview,
+    Unit, Lesson, LessonProgress,
+    Group, Schedule,
+    Vocabulary, VocabularyExample, UserVocabularyProgress,
+    Notification, DailyTracking,
+    GrammarContent,
+    ReadingContent, ReadingQuestion, ReadingOption,
+    ListeningContent, ListeningTranscript, ListeningQuestion, ListeningOption,
+    Assignment,
   ],
   synchronize: false,
 });
@@ -120,7 +136,7 @@ function testContent(questions: { q: string; options: string[]; correct: string 
 
 // ── Per-unit lesson definitions ───────────────────────────────────────────────
 
-type LessonDef = { name: string; type: LessonType; duration: number; content: any };
+type LessonDef = { name: string; [key: string]: any };
 
 function buildUnit1Lessons(): LessonDef[] {
   return [
@@ -545,10 +561,10 @@ async function seed() {
   const gamRepo = ds.getRepository(UserGamification);
   const achRepo = ds.getRepository(Achievement);
   const unitRepo = ds.getRepository(Unit);
-  const lessonRepo = ds.getRepository(CurriculumLesson);
+  const lessonRepo = ds.getRepository(Lesson);
   const groupRepo = ds.getRepository(Group);
   const scheduleRepo = ds.getRepository(Schedule);
-  const vocabRepo = ds.getRepository(VocabularyWord);
+  const vocabRepo = ds.getRepository(Vocabulary);
 
   // ── 1. Achievements ─────────────────────────────────────────────────────────
   const achDefs = [
@@ -589,7 +605,7 @@ async function seed() {
     if (!user) {
       const hashed = await bcrypt.hash(def.password, 10);
       user = await userRepo.save(
-        userRepo.create({ ...def, password: hashed, created_by: '00000000-0000-0000-0000-000000000000' }),
+        userRepo.create({ ...def, password: hashed, createdBy: '00000000-0000-0000-0000-000000000000' }),
       );
       const existing = await gamRepo.findOne({ where: { userId: user.id } });
       if (!existing) {
@@ -647,11 +663,8 @@ async function seed() {
           unitId: unit.id,
           lessonNumber: String(i + 1),
           lessonName: def.name,
-          lessonType: def.type,
           orderIndex: i,
-          durationMinutes: def.duration,
           status: LessonStatus.published,
-          content: def.content,
         }),
       );
       totalLessons++;
@@ -667,9 +680,6 @@ async function seed() {
       groupRepo.create({
         name: '1-guruh',
         color: 'blue',
-        cefrLevel: 'B1',
-        maxStudents: 20,
-        startDate: new Date().toISOString().split('T')[0],
         teacherId: teacher1.id,
         createdBy: teacher1.id,
         members: [student1, student2, student3],
@@ -698,65 +708,60 @@ async function seed() {
   if (existingVocab >= 50) {
     console.log(`⏭  Vocabulary: allaqachon ${existingVocab} ta so'z mavjud`);
   } else {
-    const unit1 = createdUnits[0];
-    const unit2 = createdUnits[1];
-    const unit3 = createdUnits[2];
-
     const vocabData = [
-      // Unit 1 — A1
-      { word: 'book', translation: 'kitob', example: 'I read a book every night.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.noun, synonyms: ['volume', 'text'], antonyms: [] },
-      { word: 'table', translation: 'stol', example: 'We eat at the table.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.noun, synonyms: ['desk'], antonyms: [] },
-      { word: 'house', translation: 'uy', example: 'I live in a small house.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.noun, synonyms: ['home', 'residence'], antonyms: [] },
-      { word: 'happy', translation: 'xursand', example: 'She looks happy today.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.adjective, synonyms: ['glad', 'joyful'], antonyms: ['sad', 'unhappy'] },
-      { word: 'small', translation: 'kichik', example: 'My cat is small.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.adjective, synonyms: ['tiny', 'little'], antonyms: ['big', 'large'] },
-      { word: 'walk', translation: 'yurmoq', example: 'We walk to school.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.verb, synonyms: ['stroll'], antonyms: ['run'] },
-      { word: 'write', translation: 'yozmoq', example: 'I write in my notebook.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.verb, synonyms: ['note', 'record'], antonyms: [] },
-      { word: 'fast', translation: 'tez', example: 'He runs fast.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.adverb, synonyms: ['quickly', 'rapidly'], antonyms: ['slow', 'slowly'] },
-      { word: 'always', translation: 'doim', example: 'I always drink coffee in the morning.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.adverb, synonyms: ['every time', 'constantly'], antonyms: ['never'] },
-      { word: 'open', translation: 'ochmoq', example: 'Please open the window.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.verb, synonyms: ['unlock'], antonyms: ['close', 'shut'] },
-      // Unit 1 — more A1
-      { word: 'chair', translation: 'stul', example: 'Sit on the chair.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.noun, synonyms: ['seat'], antonyms: [] },
-      { word: 'dog', translation: 'it', example: 'I have a small dog.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.noun, synonyms: ['puppy'], antonyms: [] },
-      { word: 'cat', translation: 'mushuk', example: 'The cat sleeps all day.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.noun, synonyms: ['kitten'], antonyms: [] },
-      { word: 'water', translation: 'suv', example: 'Drink more water.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.noun, synonyms: ['H2O'], antonyms: [] },
-      { word: 'big', translation: 'katta', example: 'London is a big city.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.adjective, synonyms: ['large', 'huge'], antonyms: ['small', 'tiny'] },
-      { word: 'new', translation: 'yangi', example: 'I bought a new phone.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.adjective, synonyms: ['fresh', 'recent'], antonyms: ['old'] },
-      { word: 'good', translation: 'yaxshi', example: 'This is a good idea.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.adjective, synonyms: ['great', 'nice'], antonyms: ['bad'] },
-      { word: 'old', translation: 'eski/katta yoshli', example: 'My grandfather is old.', cefrLevel: CefrLevel.A1, unitId: unit1.id, pos: PartOfSpeech.adjective, synonyms: ['aged', 'ancient'], antonyms: ['new', 'young'] },
-      // Unit 2 — A2
-      { word: 'market', translation: 'bozor', example: 'We buy food at the market.', cefrLevel: CefrLevel.A2, unitId: unit2.id, pos: PartOfSpeech.noun, synonyms: ['bazaar', 'shop'], antonyms: [] },
-      { word: 'appointment', translation: 'uchrashuv/qabul', example: 'I have a doctor appointment today.', cefrLevel: CefrLevel.A2, unitId: unit2.id, pos: PartOfSpeech.noun, synonyms: ['meeting', 'booking'], antonyms: [] },
-      { word: 'exercise', translation: 'mashq/jismoniy faoliyat', example: 'I exercise every morning.', cefrLevel: CefrLevel.A2, unitId: unit2.id, pos: PartOfSpeech.verb, synonyms: ['work out', 'train'], antonyms: [] },
-      { word: 'arrive', translation: 'yetib kelmoq', example: 'The train will arrive at 5.', cefrLevel: CefrLevel.A2, unitId: unit2.id, pos: PartOfSpeech.verb, synonyms: ['reach', 'come'], antonyms: ['leave', 'depart'] },
-      { word: 'delicious', translation: 'juda mazali', example: 'This cake is delicious.', cefrLevel: CefrLevel.A2, unitId: unit2.id, pos: PartOfSpeech.adjective, synonyms: ['tasty', 'yummy'], antonyms: ['awful', 'tasteless'] },
-      { word: 'crowded', translation: 'gavjum', example: 'The market was very crowded.', cefrLevel: CefrLevel.A2, unitId: unit2.id, pos: PartOfSpeech.adjective, synonyms: ['busy', 'packed'], antonyms: ['empty', 'quiet'] },
-      { word: 'healthy', translation: 'sog\'lom', example: 'Eating vegetables is healthy.', cefrLevel: CefrLevel.A2, unitId: unit2.id, pos: PartOfSpeech.adjective, synonyms: ['fit', 'well'], antonyms: ['unhealthy', 'sick'] },
-      { word: 'careful', translation: 'ehtiyotkor', example: 'Be careful on the road.', cefrLevel: CefrLevel.A2, unitId: unit2.id, pos: PartOfSpeech.adjective, synonyms: ['cautious', 'attentive'], antonyms: ['careless', 'reckless'] },
-      { word: 'remember', translation: 'eslamoq', example: 'Do you remember her name?', cefrLevel: CefrLevel.A2, unitId: unit2.id, pos: PartOfSpeech.verb, synonyms: ['recall', 'recollect'], antonyms: ['forget'] },
-      { word: 'spend', translation: 'sarflamoq', example: 'I spend a lot of money on books.', cefrLevel: CefrLevel.A2, unitId: unit2.id, pos: PartOfSpeech.verb, synonyms: ['use', 'invest'], antonyms: ['save'] },
-      // Unit 3 — A2-B1
-      { word: 'journey', translation: 'sayohat/yo\'l', example: 'The journey took three hours.', cefrLevel: CefrLevel.A2, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['trip', 'travel', 'voyage'], antonyms: [] },
-      { word: 'luggage', translation: 'bagaj', example: 'I have heavy luggage.', cefrLevel: CefrLevel.A2, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['baggage', 'bags'], antonyms: [] },
-      { word: 'departure', translation: 'ketish vaqti', example: 'The departure time is 9 am.', cefrLevel: CefrLevel.B1, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['leaving', 'exit'], antonyms: ['arrival'] },
-      { word: 'destination', translation: 'manzil', example: 'Paris is our final destination.', cefrLevel: CefrLevel.B1, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['location', 'place'], antonyms: [] },
-      { word: 'comfortable', translation: 'qulay', example: 'This seat is very comfortable.', cefrLevel: CefrLevel.A2, unitId: unit3.id, pos: PartOfSpeech.adjective, synonyms: ['cosy', 'relaxing'], antonyms: ['uncomfortable', 'hard'] },
-      { word: 'recommend', translation: 'tavsiya etmoq', example: 'I recommend this hotel.', cefrLevel: CefrLevel.B1, unitId: unit3.id, pos: PartOfSpeech.verb, synonyms: ['suggest', 'advise'], antonyms: [] },
-      { word: 'passport', translation: 'pasport', example: 'I need my passport to fly.', cefrLevel: CefrLevel.A2, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['ID', 'travel document'], antonyms: [] },
-      { word: 'currency', translation: 'valyuta', example: 'I need to exchange currency.', cefrLevel: CefrLevel.B1, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['money', 'cash'], antonyms: [] },
-      { word: 'tourist', translation: 'sayyoh', example: 'Many tourists visit London.', cefrLevel: CefrLevel.A2, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['visitor', 'traveller'], antonyms: ['local', 'resident'] },
-      { word: 'scenery', translation: 'manzara', example: 'The scenery in the mountains is breathtaking.', cefrLevel: CefrLevel.B1, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['landscape', 'view'], antonyms: [] },
-      { word: 'itinerary', translation: 'sayohat rejasi', example: 'I planned a detailed itinerary.', cefrLevel: CefrLevel.B1, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['schedule', 'plan', 'route'], antonyms: [] },
-      { word: 'accommodation', translation: 'turar joy', example: 'We booked accommodation in advance.', cefrLevel: CefrLevel.B1, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['lodging', 'housing', 'hotel'], antonyms: [] },
-      { word: 'adventure', translation: 'sarguzasht', example: 'Traveling is a great adventure.', cefrLevel: CefrLevel.A2, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['experience', 'expedition'], antonyms: [] },
-      { word: 'explore', translation: 'kashf etmoq', example: 'We explored the old city.', cefrLevel: CefrLevel.A2, unitId: unit3.id, pos: PartOfSpeech.verb, synonyms: ['discover', 'investigate'], antonyms: [] },
-      { word: 'memorable', translation: 'esda qoluvchi', example: 'It was a memorable trip.', cefrLevel: CefrLevel.B1, unitId: unit3.id, pos: PartOfSpeech.adjective, synonyms: ['unforgettable', 'remarkable'], antonyms: ['forgettable', 'ordinary'] },
-      { word: 'distant', translation: 'uzoq', example: 'They live in a distant country.', cefrLevel: CefrLevel.B1, unitId: unit3.id, pos: PartOfSpeech.adjective, synonyms: ['far', 'remote'], antonyms: ['near', 'close'] },
-      { word: 'culture', translation: 'madaniyat', example: 'I love learning about other cultures.', cefrLevel: CefrLevel.B1, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['tradition', 'heritage'], antonyms: [] },
-      { word: 'authentic', translation: 'haqiqiy', example: 'I tried authentic Italian food.', cefrLevel: CefrLevel.B1, unitId: unit3.id, pos: PartOfSpeech.adjective, synonyms: ['genuine', 'real'], antonyms: ['fake', 'artificial'] },
-      { word: 'souvenir', translation: 'esdalik sovg\'a', example: 'I bought a souvenir from Paris.', cefrLevel: CefrLevel.A2, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['keepsake', 'memento'], antonyms: [] },
-      { word: 'navigate', translation: 'yo\'nalish tanlash', example: 'It is easy to navigate with a map.', cefrLevel: CefrLevel.B1, unitId: unit3.id, pos: PartOfSpeech.verb, synonyms: ['direct', 'guide'], antonyms: [] },
-      { word: 'reservation', translation: 'bron qilish', example: 'I made a reservation at the hotel.', cefrLevel: CefrLevel.A2, unitId: unit3.id, pos: PartOfSpeech.noun, synonyms: ['booking', 'appointment'], antonyms: [] },
-      { word: 'local', translation: 'mahalliy', example: 'Ask a local person for directions.', cefrLevel: CefrLevel.A2, unitId: unit3.id, pos: PartOfSpeech.adjective, synonyms: ['native', 'regional'], antonyms: ['foreign', 'tourist'] },
+      // A1
+      { word: 'book', uzbekTranslation: 'kitob', example: 'I read a book every night.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.noun },
+      { word: 'table', uzbekTranslation: 'stol', example: 'We eat at the table.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.noun },
+      { word: 'house', uzbekTranslation: 'uy', example: 'I live in a small house.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.noun },
+      { word: 'happy', uzbekTranslation: 'xursand', example: 'She looks happy today.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.adjective },
+      { word: 'small', uzbekTranslation: 'kichik', example: 'My cat is small.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.adjective },
+      { word: 'walk', uzbekTranslation: 'yurmoq', example: 'We walk to school.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.verb },
+      { word: 'write', uzbekTranslation: 'yozmoq', example: 'I write in my notebook.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.verb },
+      { word: 'fast', uzbekTranslation: 'tez', example: 'He runs fast.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.adverb },
+      { word: 'always', uzbekTranslation: 'doim', example: 'I always drink coffee in the morning.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.adverb },
+      { word: 'open', uzbekTranslation: 'ochmoq', example: 'Please open the window.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.verb },
+      { word: 'chair', uzbekTranslation: 'stul', example: 'Sit on the chair.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.noun },
+      { word: 'dog', uzbekTranslation: 'it', example: 'I have a small dog.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.noun },
+      { word: 'cat', uzbekTranslation: 'mushuk', example: 'The cat sleeps all day.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.noun },
+      { word: 'water', uzbekTranslation: 'suv', example: 'Drink more water.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.noun },
+      { word: 'big', uzbekTranslation: 'katta', example: 'London is a big city.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.adjective },
+      { word: 'new', uzbekTranslation: 'yangi', example: 'I bought a new phone.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.adjective },
+      { word: 'good', uzbekTranslation: 'yaxshi', example: 'This is a good idea.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.adjective },
+      { word: 'old', uzbekTranslation: 'eski/katta yoshli', example: 'My grandfather is old.', cefrLevel: CefrLevel.A1, pos: PartOfSpeech.adjective },
+      // A2
+      { word: 'market', uzbekTranslation: 'bozor', example: 'We buy food at the market.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.noun },
+      { word: 'appointment', uzbekTranslation: 'uchrashuv/qabul', example: 'I have a doctor appointment today.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.noun },
+      { word: 'exercise', uzbekTranslation: 'mashq/jismoniy faoliyat', example: 'I exercise every morning.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.verb },
+      { word: 'arrive', uzbekTranslation: 'yetib kelmoq', example: 'The train will arrive at 5.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.verb },
+      { word: 'delicious', uzbekTranslation: 'juda mazali', example: 'This cake is delicious.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.adjective },
+      { word: 'crowded', uzbekTranslation: 'gavjum', example: 'The market was very crowded.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.adjective },
+      { word: 'healthy', uzbekTranslation: "sog'lom", example: 'Eating vegetables is healthy.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.adjective },
+      { word: 'careful', uzbekTranslation: 'ehtiyotkor', example: 'Be careful on the road.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.adjective },
+      { word: 'remember', uzbekTranslation: 'eslamoq', example: 'Do you remember her name?', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.verb },
+      { word: 'spend', uzbekTranslation: 'sarflamoq', example: 'I spend a lot of money on books.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.verb },
+      { word: 'journey', uzbekTranslation: "sayohat/yo'l", example: 'The journey took three hours.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.noun },
+      { word: 'luggage', uzbekTranslation: 'bagaj', example: 'I have heavy luggage.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.noun },
+      { word: 'comfortable', uzbekTranslation: 'qulay', example: 'This seat is very comfortable.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.adjective },
+      { word: 'passport', uzbekTranslation: 'pasport', example: 'I need my passport to fly.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.noun },
+      { word: 'tourist', uzbekTranslation: 'sayyoh', example: 'Many tourists visit London.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.noun },
+      { word: 'adventure', uzbekTranslation: 'sarguzasht', example: 'Traveling is a great adventure.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.noun },
+      { word: 'explore', uzbekTranslation: 'kashf etmoq', example: 'We explored the old city.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.verb },
+      { word: 'souvenir', uzbekTranslation: "esdalik sovg'a", example: 'I bought a souvenir from Paris.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.noun },
+      { word: 'reservation', uzbekTranslation: 'bron qilish', example: 'I made a reservation at the hotel.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.noun },
+      { word: 'local', uzbekTranslation: 'mahalliy', example: 'Ask a local person for directions.', cefrLevel: CefrLevel.A2, pos: PartOfSpeech.adjective },
+      // B1
+      { word: 'departure', uzbekTranslation: 'ketish vaqti', example: 'The departure time is 9 am.', cefrLevel: CefrLevel.B1, pos: PartOfSpeech.noun },
+      { word: 'destination', uzbekTranslation: 'manzil', example: 'Paris is our final destination.', cefrLevel: CefrLevel.B1, pos: PartOfSpeech.noun },
+      { word: 'recommend', uzbekTranslation: 'tavsiya etmoq', example: 'I recommend this hotel.', cefrLevel: CefrLevel.B1, pos: PartOfSpeech.verb },
+      { word: 'currency', uzbekTranslation: 'valyuta', example: 'I need to exchange currency.', cefrLevel: CefrLevel.B1, pos: PartOfSpeech.noun },
+      { word: 'scenery', uzbekTranslation: 'manzara', example: 'The scenery in the mountains is breathtaking.', cefrLevel: CefrLevel.B1, pos: PartOfSpeech.noun },
+      { word: 'itinerary', uzbekTranslation: 'sayohat rejasi', example: 'I planned a detailed itinerary.', cefrLevel: CefrLevel.B1, pos: PartOfSpeech.noun },
+      { word: 'accommodation', uzbekTranslation: 'turar joy', example: 'We booked accommodation in advance.', cefrLevel: CefrLevel.B1, pos: PartOfSpeech.noun },
+      { word: 'memorable', uzbekTranslation: 'esda qoluvchi', example: 'It was a memorable trip.', cefrLevel: CefrLevel.B1, pos: PartOfSpeech.adjective },
+      { word: 'distant', uzbekTranslation: 'uzoq', example: 'They live in a distant country.', cefrLevel: CefrLevel.B1, pos: PartOfSpeech.adjective },
+      { word: 'culture', uzbekTranslation: 'madaniyat', example: 'I love learning about other cultures.', cefrLevel: CefrLevel.B1, pos: PartOfSpeech.noun },
+      { word: 'authentic', uzbekTranslation: 'haqiqiy', example: 'I tried authentic Italian food.', cefrLevel: CefrLevel.B1, pos: PartOfSpeech.adjective },
+      { word: 'navigate', uzbekTranslation: "yo'nalish tanlash", example: 'It is easy to navigate with a map.', cefrLevel: CefrLevel.B1, pos: PartOfSpeech.verb },
     ];
 
     for (const v of vocabData) {

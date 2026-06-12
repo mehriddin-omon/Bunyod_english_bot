@@ -15,7 +15,6 @@ export class MonitoringService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
 
-
     @InjectRepository(Group)
     private readonly groupRepo: Repository<Group>,
 
@@ -46,8 +45,8 @@ export class MonitoringService {
     if (!group) throw new NotFoundException('Guruh topilmadi');
 
     const students = await Promise.all(
-      group.members.map(async (profile) => {
-        const userId = profile.id;
+      group.members.map(async (member) => {
+        const userId = member.id;
         const gamification = await this.gamificationRepo.findOne({ where: { userId } });
         const completedLessons = await this.progressRepo.count({
           where: { userId, status: LessonProgressStatus.completed },
@@ -63,10 +62,7 @@ export class MonitoringService {
           ? Math.round((completedAssignments / totalAssignments) * 100)
           : 0;
 
-        const lastActivity = gamification?.lastActivityDate
-          ? new Date(gamification.lastActivityDate)
-          : null;
-
+        const lastActivity = gamification?.lastActivityDate ? new Date(gamification.lastActivityDate) : null;
         const daysSinceActive = lastActivity
           ? Math.floor((Date.now() - lastActivity.getTime()) / 86400000)
           : 999;
@@ -80,9 +76,8 @@ export class MonitoringService {
 
         return {
           id: userId,
-          first_name: profile.firstName ?? '',
-          last_name: profile.lastName ?? '',
-          cefr_level: profile.cefrLevel ?? null,
+          first_name: member.firstName ?? '',
+          last_name: member.lastName ?? '',
           attendance: Math.min(100, completedLessons * 5),
           assignment_completion: assignmentCompletion,
           last_active_at: gamification?.lastActivityDate ?? null,
@@ -113,10 +108,7 @@ export class MonitoringService {
   }
 
   async getStudentMonitoring(studentId: string): Promise<any> {
-    const student = await this.userRepo.findOne({
-      where: { id: studentId },
-      relations: [],
-    });
+    const student = await this.userRepo.findOne({ where: { id: studentId } });
     if (!student) throw new NotFoundException("O'quvchi topilmadi");
 
     const gamification = await this.gamificationRepo.findOne({ where: { userId: studentId } });
@@ -146,14 +138,13 @@ export class MonitoringService {
         id: student.id,
         first_name: student.firstName ?? '',
         last_name: student.lastName ?? '',
-        cefr_level: student.cefrLevel ?? null,
         group: null,
-        joined_at: student.created_at,
+        joined_at: student.createdAt,
         status: 'good',
       },
       summary: {
         streak: gamification?.streakCurrent ?? 0,
-        total_time: `${Math.round((completedLessons.reduce((s, p) => s + p.timeSpentSec, 0)) / 60)}m`,
+        total_time: `${Math.round(completedLessons.reduce((s, p) => s + p.timeSpentSec, 0) / 60)}m`,
         rank_in_group: gamification?.rankWeekly ?? null,
       },
       kpi: {
@@ -173,8 +164,6 @@ export class MonitoringService {
       topic_stats: completedLessons.map((p) => ({
         lesson_code: p.lesson?.lessonNumber,
         title: p.lesson?.lessonName,
-        type: p.lesson?.lessonType,
-        completed_percent: p.progress,
         score: p.score ? `${p.score}%` : '—',
         time_spent: `${Math.round(p.timeSpentSec / 60)}m`,
         attempts: p.attempts,

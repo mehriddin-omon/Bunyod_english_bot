@@ -2,7 +2,7 @@ import { Column, Entity, ManyToOne, Index } from 'typeorm';
 import { BaseEntity } from './base.entity';
 import { User } from './user.entity';
 import { Group } from './group.entity';
-import { CurriculumLesson } from './lesson.entity';
+import { Lesson } from './lesson.entity';
 import { AssignmentType, AssignmentStatus, SubmissionStatus } from 'src/common/utils/enum';
 
 @Entity({ name: 'assignments' })
@@ -32,8 +32,8 @@ export class Assignment extends BaseEntity {
   @Column({ type: 'uuid', name: 'lesson_id', nullable: true })
   lessonId: string;
 
-  @ManyToOne(() => CurriculumLesson, { onDelete: 'SET NULL', nullable: true })
-  lesson: CurriculumLesson;
+  @ManyToOne(() => Lesson, { onDelete: 'SET NULL', nullable: true })
+  lesson: Lesson;
 
   @Column({ type: 'timestamptz', name: 'due_date', nullable: true })
   dueDate: Date;

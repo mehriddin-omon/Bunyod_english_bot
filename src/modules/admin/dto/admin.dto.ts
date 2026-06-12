@@ -1,5 +1,5 @@
 import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import { CefrLevel, Role } from 'src/common/utils/enum';
+import { Role } from 'src/common/utils/enum';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -21,13 +21,9 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
-  phone?: string;
+  phoneNumber?: string;
 
   @IsOptional()
   @IsEnum(Role)
   role?: Role;
-
-  @IsOptional()
-  @IsEnum(CefrLevel)
-  cefrLevel?: CefrLevel;
 }

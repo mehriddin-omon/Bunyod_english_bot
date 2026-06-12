@@ -2,8 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
-import { CurriculumLesson } from 'src/common/core/entitys/lesson.entity';
+import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { Group } from 'src/common/core/entitys/group.entity';
+import { LessonProgressStatus } from 'src/common/utils/enum';
 
 @Injectable()
 export class StatisticsService {
@@ -11,46 +12,30 @@ export class StatisticsService {
     @InjectRepository(LessonProgress)
     private readonly progressRepo: Repository<LessonProgress>,
 
-    @InjectRepository(CurriculumLesson)
-    private readonly lessonRepo: Repository<CurriculumLesson>,
+    @InjectRepository(Lesson)
+    private readonly lessonRepo: Repository<Lesson>,
 
     @InjectRepository(Group)
     private readonly groupRepo: Repository<Group>,
   ) {}
 
-  /**
-   * O'quvchi uchun shaxsiy statistika
-   */
   async getStudentStatistics(userId: string, lessonId: string) {
-    const progress = await this.progressRepo.findOne({
-      where: { userId, lessonId },
-    });
-
-    const lesson = await this.lessonRepo.findOne({
-      where: { id: lessonId },
-    });
+    const progress = await this.progressRepo.findOne({ where: { userId, lessonId } });
 
     return {
       lesson_id: lessonId,
       user_id: userId,
-      progress: progress?.progress || 0,
-      score: progress?.score || 0,
-      total_questions: progress?.totalQuestions || 0,
-      correct_answers: progress?.correctAnswers || 0,
-      vocabulary_count: 0,
-      completed_at: progress?.completedAt || null,
+      status: progress?.status ?? LessonProgressStatus.not_started,
+      score: progress?.score ?? 0,
+      completed_at: progress?.completedAt ?? null,
     };
   }
 
-  /**
-   * O'qituvchi uchun sinf statistikasi
-   */
   async getGroupStatistics(groupId: string) {
     const group = await this.groupRepo.findOne({
       where: { id: groupId },
       relations: ['members'],
     });
-
     if (!group) return null;
 
     const memberIds = group.members.map((m) => m.id);
@@ -61,111 +46,86 @@ export class StatisticsService {
           .getMany()
       : [];
 
-    const statisticsByStudent = {};
+    const statisticsByStudent: Record<string, any> = {};
     group.members.forEach((member) => {
       const memberProgress = progressData.filter((p) => p.userId === member.id);
-      const avgProgress = memberProgress.length > 0 ? memberProgress.reduce((acc, p) => acc + p.progress, 0) / memberProgress.length : 0;
+      const completedCount = memberProgress.filter((p) => p.status === LessonProgressStatus.completed).length;
+      const avgScore =
+        completedCount > 0
+          ? (memberProgress.filter((p) => p.score != null).reduce((acc, p) => acc + (p.score ?? 0), 0) / completedCount).toFixed(1)
+          : 0;
+
       statisticsByStudent[member.id] = {
         username: member.username ?? member.id,
-        average_progress: Math.round(avgProgress),
-        lessons_completed: memberProgress.filter((p) => p.progress === 100).length,
-        average_score: memberProgress.length > 0 ? (memberProgress.reduce((acc, p) => acc + (p.score || 0), 0) / memberProgress.length).toFixed(1) : 0,
+        lessons_completed: completedCount,
+        average_score: avgScore,
       };
     });
 
-    const allProgress = progressData.map((p) => p.progress);
-    const classAverageProgress = allProgress.length > 0 ? Math.round(allProgress.reduce((a, b) => a + b) / allProgress.length) : 0;
+    const totalCompleted = progressData.filter((p) => p.status === LessonProgressStatus.completed).length;
     const classAverageScore =
-      progressData.length > 0
-        ? (progressData.reduce((acc, p) => acc + (p.score || 0), 0) / progressData.length).toFixed(1)
+      totalCompleted > 0
+        ? (progressData.filter((p) => p.score != null).reduce((acc, p) => acc + (p.score ?? 0), 0) / totalCompleted).toFixed(1)
         : 0;
 
     return {
       group_id: groupId,
       group_name: group.name,
       member_count: group.members.length,
-      class_average_progress: classAverageProgress,
+      completed_count: totalCompleted,
       class_average_score: classAverageScore,
-      completed_count: progressData.filter((p) => p.progress === 100).length,
       statistics_by_student: statisticsByStudent,
     };
   }
 
-  /**
-   * Darsi uchun umum statistika
-   */
   async getLessonStatistics(lessonId: string) {
-    const lesson = await this.lessonRepo.findOne({
-      where: { id: lessonId },
-    });
-
+    const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
     if (!lesson) return null;
 
-    const progressData = await this.progressRepo.find({
-      where: { lessonId },
-    });
-
-    const allProgress = progressData.map((p) => p.progress);
-    const averageProgress = allProgress.length > 0 ? Math.round(allProgress.reduce((a, b) => a + b) / allProgress.length) : 0;
+    const progressData = await this.progressRepo.find({ where: { lessonId } });
+    const completedCount = progressData.filter((p) => p.status === LessonProgressStatus.completed).length;
     const averageScore =
-      progressData.length > 0 ? (progressData.reduce((acc, p) => acc + (p.score || 0), 0) / progressData.length).toFixed(1) : 0;
-    const completedCount = progressData.filter((p) => p.progress === 100).length;
+      completedCount > 0
+        ? (progressData.filter((p) => p.score != null).reduce((acc, p) => acc + (p.score ?? 0), 0) / completedCount).toFixed(1)
+        : 0;
 
     return {
       lesson_id: lessonId,
       lessonName: lesson.lessonName,
-      total_vocabulary: 0,
       total_students: progressData.length,
       completed_students: completedCount,
-      average_progress: averageProgress,
       average_score: averageScore,
     };
   }
 
-  /**
-   * Foydalanuvchining umumiy statistikasi
-   */
   async getUserOverallStatistics(userId: string) {
-    const allProgress = await this.progressRepo.find({
-      where: { userId },
-      relations: ['lesson'],
-    });
-
+    const allProgress = await this.progressRepo.find({ where: { userId } });
     if (allProgress.length === 0) {
       return {
         user_id: userId,
         total_lessons: 0,
         completed_lessons: 0,
-        average_progress: 0,
         average_score: 0,
-        total_vocabulary_learned: 0,
       };
     }
 
-    const totalProgress = allProgress.map((p) => p.progress);
-    const averageProgress = Math.round(totalProgress.reduce((a, b) => a + b) / totalProgress.length);
-    const averageScore = (allProgress.reduce((acc, p) => acc + (p.score || 0), 0) / allProgress.length).toFixed(1);
-    const completedCount = allProgress.filter((p) => p.progress === 100).length;
+    const completedCount = allProgress.filter((p) => p.status === LessonProgressStatus.completed).length;
+    const scored = allProgress.filter((p) => p.score != null);
+    const averageScore = scored.length
+      ? (scored.reduce((acc, p) => acc + (p.score ?? 0), 0) / scored.length).toFixed(1)
+      : 0;
 
     return {
       user_id: userId,
       total_lessons: allProgress.length,
       completed_lessons: completedCount,
-      average_progress: averageProgress,
       average_score: averageScore,
-      total_vocabulary_learned: allProgress.reduce((acc, p) => acc + (p.correctAnswers || 0), 0),
     };
   }
 
-  /**
-   * Student o'z statistikasi (GET /stats/my)
-   */
   async getMyStats(userId: string) {
-    const allProgress = await this.progressRepo.find({
-      where: { userId },
-      relations: ['lesson'],
-    });
-    const completedCount = allProgress.filter((p) => p.progress === 100).length;
+    const allProgress = await this.progressRepo.find({ where: { userId } });
+    const completedCount = allProgress.filter((p) => p.status === LessonProgressStatus.completed).length;
     const avgScore = allProgress.length
       ? Math.round(allProgress.reduce((s, p) => s + (p.score ?? 0), 0) / allProgress.length)
       : 0;
@@ -199,20 +159,11 @@ export class StatisticsService {
     };
   }
 
-  /**
-   * Darsi uchun progress yangilash
-   */
   async updateProgress(userId: string, lessonId: string, data: Partial<LessonProgress>) {
-    let progress = await this.progressRepo.findOne({
-      where: { userId, lessonId },
-    });
+    let progress = await this.progressRepo.findOne({ where: { userId, lessonId } });
 
     if (!progress) {
-      progress = this.progressRepo.create({
-        userId,
-        lessonId,
-        ...data,
-      });
+      progress = this.progressRepo.create({ userId, lessonId, ...data });
     } else {
       Object.assign(progress, data);
     }

@@ -13,7 +13,7 @@ export class NotificationsService {
   async getNotifications(userId: string) {
     const notifications = await this.notificationRepo.find({
       where: { userId },
-      order: { created_at: 'DESC' },
+      order: { createdAt: 'DESC' },
     });
 
     const unreadCount = notifications.filter((n) => !n.isRead).length;
@@ -26,7 +26,7 @@ export class NotificationsService {
         body: n.body,
         type: n.type,
         read: n.isRead,
-        created_at: n.created_at,
+        created_at: n.createdAt,
       })),
     };
   }

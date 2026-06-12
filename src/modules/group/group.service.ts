@@ -97,9 +97,6 @@ export class GroupService {
         id: group.id,
         name: group.name,
         color: group.color,
-        cefrLevel: group.cefrLevel,
-        maxStudents: group.maxStudents,
-        startDate: group.startDate,
         status: group.status,
         studentCount: group.members.length,
         teacher: group.teacher
@@ -115,19 +112,15 @@ export class GroupService {
   async createGroup(dto: CreateGroupDto, userId: string) {
     const group = this.groupRepo.create({
       name: dto.name,
-      color: dto.color,
-      cefrLevel: dto.cefrLevel,
-      maxStudents: dto.maxStudents,
-      startDate: dto.startDate,
+      color: dto.color ?? null,
+      description: dto.description ?? null,
       teacherId: userId,
       createdBy: userId,
       members: [],
     });
 
     if (dto.studentIds?.length) {
-      group.members = await this.userRepo.find({
-        where: { id: In(dto.studentIds) },
-      });
+      group.members = await this.userRepo.find({ where: { id: In(dto.studentIds) } });
     }
 
     const saved = await this.groupRepo.save(group);
@@ -143,7 +136,7 @@ export class GroupService {
           durationMinutes: dto.schedule.duration,
           topic: dto.schedule.topic,
           isRecurring: dto.schedule.recurring ?? true,
-          validFrom: dto.startDate ?? new Date().toISOString().split('T')[0],
+          validFrom: new Date().toISOString().split('T')[0],
         }),
       );
     }
@@ -171,7 +164,6 @@ export class GroupService {
     if (!group) throw new NotFoundException('Group not found');
 
     const schedules = await this.scheduleRepo.find({ where: { groupId } });
-
     const memberUserIds = group.members.map((m) => m.id);
 
     const [progress, gamifications] = await Promise.all([
@@ -194,44 +186,42 @@ export class GroupService {
         id: member.id,
         firstName: member.firstName,
         lastName: member.lastName,
-        cefrLevel: member.cefrLevel ?? null,
         gamification: gam ? { xp: gam.xpTotal, level: gam.level } : { xp: 0, level: 1 },
       };
     });
 
-    let totalProgress = 0;
+    let totalCompleted = 0;
     let totalScore = 0;
     let scoredCount = 0;
     let attendedCount = 0;
     const totalRecords = progress.length;
 
     for (const r of progress) {
-      totalProgress += r.progress;
-      if (r.status !== LessonProgressStatus.not_started) attendedCount++;
-      if (r.score != null) {
-        totalScore += r.score;
-        scoredCount++;
+      if (r.status === LessonProgressStatus.completed) {
+        totalCompleted++;
+        if (r.score != null) {
+          totalScore += r.score;
+          scoredCount++;
+        }
       }
+      if (r.status !== LessonProgressStatus.not_started) attendedCount++;
     }
 
     const stats = {
-      avgProgress: totalRecords > 0 ? Math.round(totalProgress / totalRecords) : 0,
       avgScore: scoredCount > 0 ? Math.round(totalScore / scoredCount) : 0,
+      completedLessons: totalCompleted,
       avgAttendance: totalRecords > 0 ? Math.round((attendedCount / totalRecords) * 100) : 0,
     };
-
-    const teacherFirstName = group.teacher?.firstName ?? '';
-    const teacherLastName = group.teacher?.lastName ?? '';
 
     return {
       id: group.id,
       name: group.name,
       color: group.color,
-      cefrLevel: group.cefrLevel,
-      maxStudents: group.maxStudents,
-      startDate: group.startDate,
+      description: group.description,
       status: group.status,
-      teacher: group.teacher ? { id: group.teacher.id, firstName: teacherFirstName, lastName: teacherLastName } : null,
+      teacher: group.teacher
+        ? { id: group.teacher.id, firstName: group.teacher.firstName, lastName: group.teacher.lastName }
+        : null,
       schedule: schedules,
       students,
       stats,
@@ -248,9 +238,6 @@ export class GroupService {
 
     if (dto.name !== undefined) group.name = dto.name;
     if (dto.color !== undefined) group.color = dto.color;
-    if (dto.cefrLevel !== undefined) group.cefrLevel = dto.cefrLevel;
-    if (dto.maxStudents !== undefined) group.maxStudents = dto.maxStudents;
-    if (dto.startDate !== undefined) group.startDate = dto.startDate;
     if (dto.description !== undefined) group.description = dto.description;
 
     return this.groupRepo.save(group);
@@ -262,19 +249,14 @@ export class GroupService {
   }
 
   async addStudents(groupId: string, dto: AddStudentsDto) {
-    const group = await this.groupRepo.findOne({
-      where: { id: groupId },
-      relations: ['members'],
-    });
+    const group = await this.groupRepo.findOne({ where: { id: groupId }, relations: ['members'] });
     if (!group) throw new NotFoundException('Group not found');
 
     const existingUserIds = new Set(group.members.map((m) => m.id));
     const newUserIds = dto.studentIds.filter((id) => !existingUserIds.has(id));
 
     if (newUserIds.length) {
-      const newUsers = await this.userRepo.find({
-        where: { id: In(newUserIds) },
-      });
+      const newUsers = await this.userRepo.find({ where: { id: In(newUserIds) } });
       group.members = [...group.members, ...newUsers];
       await this.groupRepo.save(group);
       await this.notifyStudents(newUserIds, group.id, group.name);
@@ -284,10 +266,7 @@ export class GroupService {
   }
 
   async removeStudent(groupId: string, studentId: string) {
-    const group = await this.groupRepo.findOne({
-      where: { id: groupId },
-      relations: ['members'],
-    });
+    const group = await this.groupRepo.findOne({ where: { id: groupId }, relations: ['members'] });
     if (!group) throw new NotFoundException('Group not found');
 
     group.members = group.members.filter((m) => m.id !== studentId);
@@ -297,10 +276,7 @@ export class GroupService {
   }
 
   async getGroupSchedule(groupId: string, userId: string, role: string) {
-    const group = await this.groupRepo.findOne({
-      where: { id: groupId },
-      relations: ['members'],
-    });
+    const group = await this.groupRepo.findOne({ where: { id: groupId }, relations: ['members'] });
     if (!group) throw new NotFoundException('Group not found');
 
     if (role === Role.student) {
