@@ -24,36 +24,33 @@ export class UserController {
   @Post()
   @Roles(Role.admin, Role.teacher)
   async createUser(@Body() dto: CreateUserDto, @Request() req) {
-    const data = await this.userService.createUser(dto, req.user.sub, req.user.role);
-    return { statusCode: 201, message: 'Foydalanuvchi yaratildi', data };
+    const user = await this.userService.createUser(dto, req.user.sub, req.user.role);
+    return { message: 'Foydalanuvchi yaratildi', ...user };
   }
 
   @Get()
   @Roles(Role.admin, Role.teacher)
   async findAll(@Query() query: UserListQueryDto, @Request() req) {
-    const data = await this.userService.findAll(query, req.user.sub, req.user.role);
-    return { statusCode: 200, message: "Foydalanuvchilar ro'yxati", ...data };
+    return this.userService.findAll(query, req.user.sub, req.user.role);
   }
 
   @Get(':id')
   @Roles(Role.admin, Role.teacher)
   async findById(@Param('id') id: string, @Request() req) {
-    const data = await this.userService.findById(id, req.user.sub, req.user.role);
-    return { statusCode: 200, message: "Foydalanuvchi ma'lumoti", data };
+    return this.userService.findById(id, req.user.sub, req.user.role);
   }
 
   @Put(':id')
   @Roles(Role.admin)
   async updateUser(@Param('id') id: string, @Body() dto: UpdateUserByAdminDto, @Request() req) {
-    const data = await this.userService.updateUser(id, dto, req.user.sub, req.user.role);
-    return { statusCode: 200, message: 'Foydalanuvchi yangilandi', data };
+    const user = await this.userService.updateUser(id, dto, req.user.sub, req.user.role);
+    return { message: 'Foydalanuvchi yangilandi', ...user };
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   @Roles(Role.admin)
   async deleteUser(@Param('id') id: string, @Request() req) {
-    const data = await this.userService.deleteUser(id, req.user.sub, req.user.role);
-    return { statusCode: 200, message: "Foydalanuvchi o'chirildi", data };
+    return this.userService.deleteUser(id, req.user.sub, req.user.role);
   }
 }

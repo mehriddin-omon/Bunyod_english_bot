@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { LessonsService } from './lessons.service';
 import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guard/roles.guard';
@@ -7,6 +7,14 @@ import { RolesGuard } from 'src/common/guard/roles.guard';
 @UseGuards(GuardService, RolesGuard)
 export class LessonsController {
   constructor(private readonly lessonsService: LessonsService) {}
+
+  /** GET /lessons?unit_number=1  — React Native ilova uchun */
+  @Get()
+  async getPublished(@Query('unit_number') unitNumber: string) {
+    const num = Number(unitNumber);
+    if (isNaN(num) || num < 1) return [];
+    return this.lessonsService.getPublishedByUnit(num);
+  }
 
   /** GET /lessons/units */
   @Get('units')
@@ -48,6 +56,12 @@ export class LessonsController {
   @Get(':lessonId/content')
   async getLessonContent(@Param('lessonId') lessonId: string) {
     return this.lessonsService.getLessonContent(lessonId);
+  }
+
+  /** GET /lessons/:lessonId/blocks */
+  @Get(':lessonId/blocks')
+  async getLessonBlocks(@Param('lessonId') lessonId: string) {
+    return this.lessonsService.getLessonBlocks(lessonId);
   }
 
   /** GET /lessons/:lessonId */

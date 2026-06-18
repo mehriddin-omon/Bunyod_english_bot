@@ -661,9 +661,8 @@ async function seed() {
       await lessonRepo.save(
         lessonRepo.create({
           unitId: unit.id,
-          lessonNumber: String(i + 1),
           lessonName: def.name,
-          orderIndex: i,
+          orderIndex: i + 1,
           status: LessonStatus.published,
         }),
       );

@@ -1,18 +1,28 @@
 import { Logger, LogLevel, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { config, corsConfig } from './config';
 import helmet from 'helmet';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
 // import { UUIDInterceptor } from 'src/infrastructure';
 
 export default class Application {
   private static readonly logger = new Logger(Application.name);
 
   public static async main(): Promise<void> {
-    const app = await NestFactory.create(AppModule);
+    const uploadsDir = join(process.cwd(), 'uploads');
+    for (const sub of ['audio', 'images', 'videos', 'documents']) {
+      const dir = join(uploadsDir, sub);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    }
+
+    const app = await NestFactory.create<NestExpressApplication>(AppModule);
+    app.useStaticAssets(uploadsDir, { prefix: '/uploads' });
     const environment = config.NODE_ENV || 'development';
-    app.use(helmet());
+    app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
     app.enableCors(corsConfig[environment]);
     app.useGlobalFilters(new GlobalExceptionFilter());
 

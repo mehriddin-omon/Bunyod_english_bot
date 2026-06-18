@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Lesson } from 'src/common/core/entitys/lesson.entity';
-import { Unit } from 'src/common/core/entitys/unit.entity';
 import { GrammarContent } from 'src/common/core/entitys/grammar-content.entity';
+import { Group } from 'src/common/core/entitys/group.entity';
 import { ReadingContent } from 'src/common/core/entitys/reading-content.entity';
 import { ReadingQuestion } from 'src/common/core/entitys/reading-question.entity';
 import { ReadingOption } from 'src/common/core/entitys/reading-option.entity';
@@ -19,8 +19,8 @@ import { BlocksController } from './blocks.controller';
   imports: [
     TypeOrmModule.forFeature([
       Lesson,
-      Unit,
       GrammarContent,
+      Group,
       ReadingContent,
       ReadingQuestion,
       ReadingOption,

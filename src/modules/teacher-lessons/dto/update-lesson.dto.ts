@@ -2,18 +2,22 @@ import { IsString, IsOptional, IsNumber, IsUUID } from 'class-validator';
 
 export class UpdateLessonDto {
   @IsOptional()
-  @IsUUID()
-  unitId?: string;
+  @IsString()
+  title?: string;
 
   @IsOptional()
-  @IsString()
-  lessonName?: string;
-
-  @IsOptional()
-  @IsString()
-  lessonNumber?: string;
+  @IsNumber()
+  unitNumber?: number | null;
 
   @IsOptional()
   @IsNumber()
   orderIndex?: number;
+
+  @IsOptional()
+  @IsString()
+  cefrLevel?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  groupId?: string | null;
 }

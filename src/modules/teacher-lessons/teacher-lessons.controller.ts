@@ -62,9 +62,9 @@ export class TeacherLessonsController {
     return this.svc.duplicateLesson(id);
   }
 
-  @Get('grammar')
-  @Roles(Role.teacher, Role.admin, Role.subTeacher)
-  searchGrammar(@Query() query: any) {
-    return this.svc.searchGrammar(query);
+  @Get('unit-numbers')
+  @Roles(Role.teacher, Role.admin)
+  getUnitNumbers() {
+    return this.svc.getUnitNumbers();
   }
 }

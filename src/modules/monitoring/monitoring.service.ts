@@ -162,7 +162,7 @@ export class MonitoringService {
       activity_heatmap: heatmap,
       weekly_minutes: [],
       topic_stats: completedLessons.map((p) => ({
-        lesson_code: p.lesson?.lessonNumber,
+        lesson_code: p.lesson?.orderIndex,
         title: p.lesson?.lessonName,
         score: p.score ? `${p.score}%` : '—',
         time_spent: `${Math.round(p.timeSpentSec / 60)}m`,

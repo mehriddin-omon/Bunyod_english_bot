@@ -29,8 +29,9 @@ export class SectionsService {
 
     const lessonsByUnit = new Map<string, Lesson[]>();
     allLessons.forEach((l) => {
-      if (!lessonsByUnit.has(l.unitId)) lessonsByUnit.set(l.unitId, []);
-      lessonsByUnit.get(l.unitId)!.push(l);
+      const key = l.unitId ?? '';
+      if (!lessonsByUnit.has(key)) lessonsByUnit.set(key, []);
+      lessonsByUnit.get(key)!.push(l);
     });
 
     const allProgress = await this.progressRepo.find({ where: { userId } });
@@ -125,7 +126,7 @@ export class SectionsService {
       return {
         id: lesson.id,
         sectionId: unit.id,
-        number: `${unit.number}.${lesson.lessonNumber || lesson.orderIndex}`,
+        number: `${unit.number}.${lesson.orderIndex}`,
         title: lesson.lessonName,
         status: lessonStatus,
         score: progress?.score ?? null,

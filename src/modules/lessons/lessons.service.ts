@@ -7,7 +7,7 @@ import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
 import { GrammarContent } from 'src/common/core/entitys/grammar-content.entity';
 import { ReadingContent } from 'src/common/core/entitys/reading-content.entity';
 import { ListeningContent } from 'src/common/core/entitys/listening-content.entity';
-import { LessonProgressStatus, Role } from 'src/common/utils/enum';
+import { LessonProgressStatus, LessonStatus, Role } from 'src/common/utils/enum';
 
 @Injectable()
 export class LessonsService {
@@ -29,7 +29,7 @@ export class LessonsService {
 
     @InjectRepository(ListeningContent)
     private readonly listeningRepo: Repository<ListeningContent>,
-  ) {}
+  ) { }
 
   async getUnits(userId: string, role: Role) {
     const units = await this.unitRepo.find({ order: { number: 'ASC' } });
@@ -37,8 +37,9 @@ export class LessonsService {
 
     const lessonsByUnit = new Map<string, Lesson[]>();
     allLessons.forEach((l) => {
-      if (!lessonsByUnit.has(l.unitId)) lessonsByUnit.set(l.unitId, []);
-      lessonsByUnit.get(l.unitId)!.push(l);
+      const key = l.unitId ?? '';
+      if (!lessonsByUnit.has(key)) lessonsByUnit.set(key, []);
+      lessonsByUnit.get(key)!.push(l);
     });
 
     let progressMap = new Map<string, LessonProgress>();
@@ -87,7 +88,7 @@ export class LessonsService {
         progress,
         status,
         currentLesson: currentLesson
-          ? { id: currentLesson.id, lessonCode: `${unit.number}.${currentLesson.lessonNumber}`, title: currentLesson.lessonName }
+          ? { id: currentLesson.id, lessonCode: `${unit.number}.${currentLesson.orderIndex}`, title: currentLesson.lessonName }
           : null,
       };
     });
@@ -127,7 +128,7 @@ export class LessonsService {
       return {
         id: lesson.id,
         number: lesson.orderIndex,
-        lessonCode: `${unit.number}.${lesson.lessonNumber}`,
+        lessonCode: `${unit.number}.${lesson.orderIndex}`,
         title: lesson.lessonName,
         status,
         score: progress?.score ?? null,
@@ -155,7 +156,14 @@ export class LessonsService {
     return {
       id: lesson.id,
       title: lesson.lessonName,
-      grammar: { count: grammar.length, items: grammar.map((g) => ({ id: g.id, pageName: g.pageName })) },
+      grammar: {
+        count: grammar.length,
+        items: grammar.map(
+          (g) => ({
+            id: g.id,
+            pageName: g.pageName
+          }))
+      },
       reading: { count: reading.length, items: reading.map((r) => ({ id: r.id, title: r.title, wordCount: r.wordCount })) },
       listening: { count: listening.length, items: listening.map((l) => ({ id: l.id, title: l.title, durationSeconds: l.durationSeconds })) },
     };
@@ -183,6 +191,113 @@ export class LessonsService {
     return { lessonId, content };
   }
 
+  async getPublishedByUnit(unitNumber: number): Promise<any[]> {
+    const unit = await this.unitRepo.findOne({ where: { number: unitNumber } });
+    if (!unit) return [];
+
+    const lessons = await this.lessonRepo.find({
+      where: { unitId: unit.id, status: LessonStatus.published },
+      order: { orderIndex: 'ASC' },
+    });
+
+    return Promise.all(
+      lessons.map(async (lesson) => {
+        const [readingCount, listeningCount] = await Promise.all([
+          this.readingRepo.count({ where: { lessonId: lesson.id } }),
+          this.listeningRepo.count({ where: { lessonId: lesson.id } }),
+        ]);
+
+        let page_type: 'grammar' | 'reading' | 'listening' = 'grammar';
+        if (readingCount > 0) page_type = 'reading';
+        else if (listeningCount > 0) page_type = 'listening';
+
+        return {
+          id: lesson.id,
+          title: lesson.lessonName,
+          lesson_code: `${unit.number}.${lesson.orderIndex.toString().padStart(2, '0')}`,
+          unit_number: unit.number,
+          cefr_level: '',
+          status: lesson.status as 'published' | 'draft',
+          teacher_id: '',
+          group_id: null,
+          page_type,
+          duration: null,
+        };
+      }),
+    );
+  }
+
+  async getLessonBlocks(lessonId: string) {
+    const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
+    if (!lesson) throw new NotFoundException('Dars topilmadi');
+
+    const [grammars, readings, listenings] = await Promise.all([
+      this.grammarRepo.find({ where: { lessonId }, order: { createdAt: 'ASC' } }),
+      this.readingRepo.find({
+        where: { lessonId },
+        relations: ['questions', 'questions.options'],
+        order: { orderIndex: 'ASC' },
+      }),
+      this.listeningRepo.find({
+        where: { lessonId },
+        relations: ['transcripts', 'questions', 'questions.options'],
+        order: { orderIndex: 'ASC' },
+      }),
+    ]);
+
+    let order = 1;
+
+    const grammarBlocks = grammars.map((g) => ({
+      id: g.id,
+      type: 'grammar' as const,
+      order: order++,
+      grammarPage: g.pageName,
+    }));
+
+    const readingBlocks = readings.map((r) => ({
+      id: r.id,
+      type: 'reading' as const,
+      order: order++,
+      title: r.title,
+      content: r.textContent,
+      wordCount: r.wordCount,
+      readTimeMinutes: r.readingTimeMinutes,
+      questions: r.questions
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map((q) => ({
+          id: q.id,
+          questionText: q.questionText,
+          questionType: q.questionType,
+          options: q.options
+            .sort((a, b) => a.orderIndex - b.orderIndex)
+            .map((o) => ({ id: o.id, optionText: o.optionText, isCorrect: o.isCorrect })),
+        })),
+    }));
+
+    const listeningBlocks = listenings.map((l) => ({
+      id: l.id,
+      type: 'listening' as const,
+      order: order++,
+      title: l.title,
+      audioUrl: l.fileId || null,
+      duration: l.durationSeconds,
+      transcript: l.transcripts
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map((t) => ({ speaker: t.speakerName, timeStart: t.timestampSec, text: t.textContent })),
+      questions: l.questions
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map((q) => ({
+          id: q.id,
+          type: 'mcq' as const,
+          question: q.questionText,
+          options: q.options.sort((a, b) => a.orderIndex - b.orderIndex).map((o) => o.optionText),
+          correctAnswer: q.options.find((o) => o.isCorrect)?.optionText ?? '',
+        })),
+    }));
+
+    return [...grammarBlocks, ...readingBlocks, ...listeningBlocks];
+  }
+
   async getLesson(lessonId: string, userId: string) {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId }, relations: ['unit'] });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
@@ -191,7 +306,7 @@ export class LessonsService {
 
     return {
       id: lesson.id,
-      lessonCode: lesson.unit ? `${lesson.unit.number}.${lesson.lessonNumber}` : lesson.lessonNumber,
+      lessonCode: lesson.unit ? `${lesson.unit.number}.${lesson.orderIndex}` : String(lesson.orderIndex),
       title: lesson.lessonName,
       orderIndex: lesson.orderIndex,
       status: lesson.status,

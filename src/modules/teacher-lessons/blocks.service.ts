@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GrammarContent } from 'src/common/core/entitys/grammar-content.entity';
@@ -11,6 +11,17 @@ import { ListeningQuestion } from 'src/common/core/entitys/listening-question.en
 import { ListeningOption } from 'src/common/core/entitys/listening-option.entity';
 import { TeacherLessonsService } from './teacher-lessons.service';
 import { QuestionType } from 'src/common/utils/enum';
+
+// "mcq" (frontend) → "multiple_choice" (backend enum)
+function toQuestionType(type: string): QuestionType {
+  if (type === 'mcq') return QuestionType.multiple_choice;
+  return (type as QuestionType) ?? QuestionType.multiple_choice;
+}
+
+function fromQuestionType(type: QuestionType): string {
+  if (type === QuestionType.multiple_choice) return 'mcq';
+  return type;
+}
 
 @Injectable()
 export class BlocksService {
@@ -31,7 +42,7 @@ export class BlocksService {
     private readonly listeningRepo: Repository<ListeningContent>,
 
     @InjectRepository(ListeningTranscript)
-    private readonly transcriptRepo: Repository<ListeningTranscript>,
+    private readonly listeningTranscriptRepo: Repository<ListeningTranscript>,
 
     @InjectRepository(ListeningQuestion)
     private readonly listeningQRepo: Repository<ListeningQuestion>,
@@ -42,103 +53,162 @@ export class BlocksService {
     private readonly lessonsSvc: TeacherLessonsService,
   ) {}
 
-  // ─── Grammar ─────────────────────────────────────────────────
+  // ─── Block CRUD ───────────────────────────────────────────────
 
-  async getGrammarContents(lessonId: string) {
+  async getBlocks(lessonId: string) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    return this.grammarRepo.find({ where: { lessonId }, order: { createdAt: 'ASC' } });
+    const [grammar, reading, listening] = await Promise.all([
+      this.grammarRepo.find({ where: { lessonId }, order: { createdAt: 'ASC' } }),
+      this.readingRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } }),
+      this.listeningRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } }),
+    ]);
+    return [
+      ...grammar.map((g) => ({ id: g.id, type: 'grammar', grammarPage: g.pageName })),
+      ...reading.map((r) => ({
+        id: r.id,
+        type: 'reading',
+        order: r.orderIndex,
+        reading: { title: r.title, content: r.textContent, wordCount: r.wordCount },
+      })),
+      ...listening.map((l) => ({
+        id: l.id,
+        type: 'listening',
+        order: l.orderIndex,
+        listening: {
+          title: l.title,
+          audioUrl: l.fileId || null,
+          imageUrl: l.imageUrl,
+          duration: l.durationSeconds,
+          trackCode: l.trackCode,
+          speakers: l.speakers,
+        },
+      })),
+    ];
   }
 
-  async addGrammarContent(lessonId: string, pageName: string) {
+  async addBlock(lessonId: string, dto: { type: string; grammarPage?: string; title?: string; textContent?: string; fileId?: string }) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.grammarRepo.save(this.grammarRepo.create({ lessonId, pageName }));
-    return { id: content.id, lessonId: content.lessonId, pageName: content.pageName };
+
+    if (dto.type === 'grammar') {
+      const g = await this.grammarRepo.save(
+        this.grammarRepo.create({ lessonId, pageName: dto.grammarPage ?? '' }),
+      );
+      return { id: g.id, type: 'grammar', grammarPage: g.pageName };
+    }
+
+    if (dto.type === 'reading') {
+      const count = await this.readingRepo.count({ where: { lessonId } });
+      const r = await this.readingRepo.save(
+        this.readingRepo.create({ lessonId, title: dto.title ?? '', textContent: dto.textContent ?? '', orderIndex: count }),
+      );
+      return { id: r.id, type: 'reading', title: r.title, orderIndex: r.orderIndex };
+    }
+
+    if (dto.type === 'listening') {
+      const count = await this.listeningRepo.count({ where: { lessonId } });
+      const l = await this.listeningRepo.save(
+        this.listeningRepo.create({ lessonId, title: dto.title ?? '', fileId: dto.fileId ?? '', orderIndex: count }),
+      );
+      return { id: l.id, type: 'listening', title: l.title, fileId: l.fileId, orderIndex: l.orderIndex };
+    }
+
+    throw new NotFoundException("Noto'g'ri blok turi");
   }
 
-  async updateGrammarContent(lessonId: string, contentId: string, pageName: string) {
+  async deleteBlock(lessonId: string, blockId: string) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.grammarRepo.findOne({ where: { id: contentId, lessonId } });
-    if (!content) throw new NotFoundException('Grammar content topilmadi');
-    content.pageName = pageName;
-    return this.grammarRepo.save(content);
+
+    const grammar = await this.grammarRepo.findOne({ where: { id: blockId, lessonId } });
+    if (grammar) { await this.grammarRepo.remove(grammar); return { message: "O'chirildi" }; }
+
+    const reading = await this.readingRepo.findOne({ where: { id: blockId, lessonId } });
+    if (reading) { await this.readingRepo.remove(reading); return { message: "O'chirildi" }; }
+
+    const listening = await this.listeningRepo.findOne({ where: { id: blockId, lessonId } });
+    if (listening) { await this.listeningRepo.remove(listening); return { message: "O'chirildi" }; }
+
+    throw new NotFoundException('Blok topilmadi');
   }
 
-  async deleteGrammarContent(lessonId: string, contentId: string) {
+  async reorderBlocks(lessonId: string, blockIds: string[]) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.grammarRepo.findOne({ where: { id: contentId, lessonId } });
-    if (!content) throw new NotFoundException('Grammar content topilmadi');
-    await this.grammarRepo.remove(content);
-    return { message: "O'chirildi" };
-  }
-
-  // ─── Reading ─────────────────────────────────────────────────
-
-  async getReadingContents(lessonId: string) {
-    await this.lessonsSvc.verifyLesson(lessonId);
-    return this.readingRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } });
-  }
-
-  async addReadingContent(lessonId: string, dto: { title: string; textContent?: string; orderIndex?: number }) {
-    await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.readingRepo.save(
-      this.readingRepo.create({
-        lessonId,
-        title: dto.title,
-        textContent: dto.textContent ?? '',
-        orderIndex: dto.orderIndex ?? 0,
+    await Promise.all(
+      blockIds.map(async (id, idx) => {
+        await this.readingRepo.update({ id, lessonId }, { orderIndex: idx }).catch(() => {});
+        await this.listeningRepo.update({ id, lessonId }, { orderIndex: idx }).catch(() => {});
       }),
     );
-    return { id: content.id, title: content.title, textContent: content.textContent, orderIndex: content.orderIndex };
+    return { message: 'Tartib saqlandi' };
   }
 
-  async saveReadingContent(lessonId: string, contentId: string, dto: Partial<{ title: string; textContent: string; orderIndex: number }>) {
+  // ─── Grammar ──────────────────────────────────────────────────
+
+  async updateGrammarPage(lessonId: string, blockId: string, pageName: string) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.readingRepo.findOne({ where: { id: contentId, lessonId } });
-    if (!content) throw new NotFoundException('Reading content topilmadi');
-    Object.assign(content, dto);
-    if (dto.textContent !== undefined) {
-      content.wordCount = dto.textContent.split(/\s+/).filter(Boolean).length;
+    const g = await this.grammarRepo.findOne({ where: { id: blockId, lessonId } });
+    if (!g) throw new NotFoundException('Grammar blok topilmadi');
+    g.pageName = pageName;
+    const saved = await this.grammarRepo.save(g);
+    return { id: saved.id, type: 'grammar', grammarPage: saved.pageName };
+  }
+
+  // ─── Reading ──────────────────────────────────────────────────
+
+  async getReading(lessonId: string, blockId: string) {
+    await this.lessonsSvc.verifyLesson(lessonId);
+    const content = await this.readingRepo.findOne({ where: { id: blockId, lessonId }, relations: ['questions', 'questions.options'] });
+    if (!content) return { blockId, title: null, content: null, wordCount: null, questions: [] };
+    return {
+      id: content.id,
+      title: content.title,
+      content: content.textContent,
+      wordCount: content.wordCount,
+      readTimeMinutes: content.readingTimeMinutes,
+      questions: (content.questions ?? []).map((q) => ({
+        id: q.id,
+        questionText: q.questionText,
+        questionType: q.questionType,
+        correctExplanation: q.correctExplanation,
+        orderIndex: q.orderIndex,
+        options: (q.options ?? []).map((o) => ({ id: o.id, optionText: o.optionText, isCorrect: o.isCorrect })),
+      })),
+    };
+  }
+
+  async saveReading(lessonId: string, blockId: string, dto: any) {
+    await this.lessonsSvc.verifyLesson(lessonId);
+    const content = await this.readingRepo.findOne({ where: { id: blockId, lessonId } });
+    if (!content) throw new NotFoundException('Reading blok topilmadi');
+    if (dto.title !== undefined) content.title = dto.title;
+    if (dto.text !== undefined) {
+      content.textContent = dto.text;
+      content.wordCount = dto.text ? dto.text.split(/\s+/).filter(Boolean).length : null;
     }
+    if (dto.readTimeMinutes !== undefined) content.readingTimeMinutes = dto.readTimeMinutes;
     const saved = await this.readingRepo.save(content);
-    return { id: saved.id, title: saved.title, textContent: saved.textContent, wordCount: saved.wordCount, orderIndex: saved.orderIndex };
+    return { id: saved.id, title: saved.title, content: saved.textContent, wordCount: saved.wordCount };
   }
 
-  async deleteReadingContent(lessonId: string, contentId: string) {
+  async addReadingQuestion(lessonId: string, blockId: string, dto: { questionText: string; questionType: QuestionType; correctExplanation?: string }) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.readingRepo.findOne({ where: { id: contentId, lessonId } });
-    if (!content) throw new NotFoundException('Reading content topilmadi');
-    await this.readingRepo.remove(content);
-    return { message: "O'chirildi" };
-  }
-
-  async getReadingWithQuestions(lessonId: string, contentId: string) {
-    await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.readingRepo.findOne({ where: { id: contentId, lessonId }, relations: ['questions', 'questions.options'] });
-    if (!content) throw new NotFoundException('Reading content topilmadi');
-    return content;
-  }
-
-  async addReadingQuestion(lessonId: string, contentId: string, dto: { questionText: string; questionType: QuestionType; correctExplanation?: string }) {
-    await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.readingRepo.findOne({ where: { id: contentId, lessonId } });
-    if (!content) throw new NotFoundException('Reading content topilmadi');
-
-    const count = await this.readingQRepo.count({ where: { readingId: contentId } });
-    const q = await this.readingQRepo.save(this.readingQRepo.create({ readingId: contentId, ...dto, orderIndex: count }));
+    const content = await this.readingRepo.findOne({ where: { id: blockId, lessonId } });
+    if (!content) throw new NotFoundException('Reading blok topilmadi');
+    const count = await this.readingQRepo.count({ where: { readingId: content.id } });
+    const q = await this.readingQRepo.save(this.readingQRepo.create({ readingId: content.id, ...dto, orderIndex: count }));
     return { id: q.id, questionText: q.questionText, questionType: q.questionType, correctExplanation: q.correctExplanation, orderIndex: q.orderIndex };
   }
 
-  async updateReadingQuestion(lessonId: string, contentId: string, qId: string, dto: Partial<{ questionText: string; questionType: QuestionType; correctExplanation: string }>) {
+  async updateReadingQuestion(lessonId: string, _blockId: string, qId: string, dto: any) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    const q = await this.readingQRepo.findOne({ where: { id: qId, readingId: contentId } });
+    const q = await this.readingQRepo.findOne({ where: { id: qId } });
     if (!q) throw new NotFoundException('Savol topilmadi');
     Object.assign(q, dto);
     return this.readingQRepo.save(q);
   }
 
-  async deleteReadingQuestion(lessonId: string, contentId: string, qId: string) {
+  async deleteReadingQuestion(lessonId: string, _blockId: string, qId: string) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    const q = await this.readingQRepo.findOne({ where: { id: qId, readingId: contentId } });
+    const q = await this.readingQRepo.findOne({ where: { id: qId } });
     if (!q) throw new NotFoundException('Savol topilmadi');
     await this.readingQRepo.remove(q);
     return { message: "O'chirildi" };
@@ -151,104 +221,203 @@ export class BlocksService {
     return this.readingOptRepo.save(this.readingOptRepo.create({ questionId: qId, ...dto, orderIndex: count }));
   }
 
-  async deleteReadingOption(optionId: string) {
-    const opt = await this.readingOptRepo.findOne({ where: { id: optionId } });
-    if (!opt) throw new NotFoundException('Variant topilmadi');
-    await this.readingOptRepo.remove(opt);
-    return { message: "O'chirildi" };
-  }
+  // ─── Listening ────────────────────────────────────────────────
 
-  // ─── Listening ───────────────────────────────────────────────
-
-  async getListeningContents(lessonId: string) {
-    await this.lessonsSvc.verifyLesson(lessonId);
-    return this.listeningRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } });
-  }
-
-  async addListeningContent(lessonId: string, dto: { title: string; fileId: string; durationSeconds?: number; speakerCount?: number; orderIndex?: number }) {
-    await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.listeningRepo.save(this.listeningRepo.create({ lessonId, ...dto }));
-    return { id: content.id, title: content.title, fileId: content.fileId, durationSeconds: content.durationSeconds, orderIndex: content.orderIndex };
-  }
-
-  async saveListeningContent(lessonId: string, contentId: string, dto: Partial<{ title: string; fileId: string; durationSeconds: number; speakerCount: number }>) {
-    await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.listeningRepo.findOne({ where: { id: contentId, lessonId } });
-    if (!content) throw new NotFoundException('Listening content topilmadi');
-    Object.assign(content, dto);
-    const saved = await this.listeningRepo.save(content);
-    return { id: saved.id, title: saved.title, fileId: saved.fileId, durationSeconds: saved.durationSeconds, speakerCount: saved.speakerCount };
-  }
-
-  async deleteListeningContent(lessonId: string, contentId: string) {
-    await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.listeningRepo.findOne({ where: { id: contentId, lessonId } });
-    if (!content) throw new NotFoundException('Listening content topilmadi');
-    await this.listeningRepo.remove(content);
-    return { message: "O'chirildi" };
-  }
-
-  async getListeningWithDetails(lessonId: string, contentId: string) {
+  async getListening(lessonId: string, blockId: string) {
     await this.lessonsSvc.verifyLesson(lessonId);
     const content = await this.listeningRepo.findOne({
-      where: { id: contentId, lessonId },
-      relations: ['transcripts', 'questions', 'questions.options'],
+      where: { id: blockId, lessonId },
+      relations: ['questions', 'questions.options', 'transcripts'],
     });
-    if (!content) throw new NotFoundException('Listening content topilmadi');
-    return content;
+    if (!content) return { blockId, title: null, audioUrl: null, duration: null, questions: [], transcript: [] };
+    return {
+      id: content.id,
+      title: content.title,
+      audioUrl: content.fileId || null,
+      imageUrl: content.imageUrl,
+      duration: content.durationSeconds,
+      trackCode: content.trackCode,
+      speakers: content.speakers,
+      orderIndex: content.orderIndex,
+      transcript: (content.transcripts ?? [])
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map((t) => ({ speaker: t.speakerName, timeStart: t.timestampSec, text: t.textContent })),
+      questions: (content.questions ?? [])
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map((q) => {
+          const opts = (q.options ?? []).sort((a, b) => a.orderIndex - b.orderIndex);
+          return {
+            id: q.id,
+            type: fromQuestionType(q.questionType),
+            question: q.questionText,
+            imageUrl: q.imageUrl,
+            matchTargets: q.matchTargets,
+            explanation: q.correctExplanation,
+            orderIndex: q.orderIndex,
+            options: opts.map((o) => ({
+              id: o.id,
+              text: o.optionText,
+              imageUrl: o.imageUrl,
+              matchKey: o.matchKey,
+              isCorrect: o.isCorrect,
+            })),
+          };
+        }),
+    };
   }
 
-  async addTranscript(lessonId: string, contentId: string, dto: { speakerName?: string; timestampSec?: number; textContent: string }) {
+  async saveListening(lessonId: string, blockId: string, dto: any) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.listeningRepo.findOne({ where: { id: contentId, lessonId } });
-    if (!content) throw new NotFoundException('Listening content topilmadi');
-    const count = await this.transcriptRepo.count({ where: { listeningId: contentId } });
-    return this.transcriptRepo.save(this.transcriptRepo.create({ listeningId: contentId, ...dto, orderIndex: count }));
+    const content = await this.listeningRepo.findOne({ where: { id: blockId, lessonId } });
+    if (!content) throw new NotFoundException('Listening blok topilmadi');
+
+    if (dto.title !== undefined) content.title = dto.title;
+    // accept both audioUrl (frontend) and fileId (backend)
+    if (dto.audioUrl !== undefined) content.fileId = dto.audioUrl ?? '';
+    if (dto.fileId !== undefined) content.fileId = dto.fileId;
+    // accept both duration (frontend) and durationSeconds (backend)
+    if (dto.duration !== undefined) content.durationSeconds = dto.duration;
+    if (dto.durationSeconds !== undefined) content.durationSeconds = dto.durationSeconds;
+    if (dto.trackCode !== undefined) content.trackCode = dto.trackCode;
+    if (dto.speakers !== undefined) content.speakers = dto.speakers;
+    if (dto.imageUrl !== undefined) content.imageUrl = dto.imageUrl ?? null;
+
+    if (dto.transcript !== undefined) {
+      await this.listeningTranscriptRepo.delete({ listeningId: content.id });
+      if (Array.isArray(dto.transcript) && dto.transcript.length > 0) {
+        await this.listeningTranscriptRepo.save(
+          dto.transcript.map((t: any, idx: number) =>
+            this.listeningTranscriptRepo.create({
+              listeningId: content.id,
+              speakerName: t.speaker ?? null,
+              timestampSec: t.timeStart ?? null,
+              textContent: t.text ?? '',
+              orderIndex: idx,
+            }),
+          ),
+        );
+      }
+    }
+
+    const saved = await this.listeningRepo.save(content);
+    return {
+      id: saved.id,
+      title: saved.title,
+      audioUrl: saved.fileId || null,
+      duration: saved.durationSeconds,
+      trackCode: saved.trackCode,
+      speakers: saved.speakers,
+    };
   }
 
-  async deleteTranscript(transcriptId: string) {
-    const transcript = await this.transcriptRepo.findOne({ where: { id: transcriptId } });
-    if (!transcript) throw new NotFoundException('Transcript topilmadi');
-    await this.transcriptRepo.remove(transcript);
-    return { message: "O'chirildi" };
-  }
-
-  async addListeningQuestion(lessonId: string, contentId: string, dto: { questionText: string; questionType: QuestionType; correctExplanation?: string }) {
+  async addListeningQuestion(lessonId: string, blockId: string, dto: any) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    const content = await this.listeningRepo.findOne({ where: { id: contentId, lessonId } });
-    if (!content) throw new NotFoundException('Listening content topilmadi');
-    const count = await this.listeningQRepo.count({ where: { listeningId: contentId } });
-    const q = await this.listeningQRepo.save(this.listeningQRepo.create({ listeningId: contentId, ...dto, orderIndex: count }));
-    return { id: q.id, questionText: q.questionText, questionType: q.questionType, correctExplanation: q.correctExplanation, orderIndex: q.orderIndex };
+    const content = await this.listeningRepo.findOne({ where: { id: blockId, lessonId } });
+    if (!content) throw new NotFoundException('Listening blok topilmadi');
+    const count = await this.listeningQRepo.count({ where: { listeningId: content.id } });
+
+    const questionText = dto.question ?? dto.questionText ?? '';
+    const questionType = toQuestionType(dto.type ?? dto.questionType ?? 'mcq');
+    const correctExplanation = dto.explanation ?? dto.correctExplanation ?? null;
+    const questionImageUrl = dto.imageUrl ?? null;
+    const matchTargets = dto.matchTargets ?? null;
+
+    const q = await this.listeningQRepo.save(
+      this.listeningQRepo.create({ listeningId: content.id, questionText, questionType, correctExplanation, imageUrl: questionImageUrl, matchTargets, orderIndex: count }),
+    );
+
+    const rawOptions: any[] = dto.options ?? [];
+    const correctAnswer = String(dto.correctAnswer ?? '');
+    if (rawOptions.length > 0) {
+      const byIndex = correctAnswer !== '' && !isNaN(Number(correctAnswer));
+      await this.listeningOptRepo.save(
+        rawOptions.map((opt, idx) => {
+          const optText = typeof opt === 'string' ? opt : (opt.text ?? opt.optionText ?? '');
+          const optImageUrl = typeof opt === 'object' ? (opt.imageUrl ?? null) : null;
+          const optMatchKey = typeof opt === 'object' ? (opt.matchKey ?? null) : null;
+          const isCorrectOverride = typeof opt === 'object' && opt.isCorrect !== undefined ? opt.isCorrect : undefined;
+          const isCorrect = isCorrectOverride !== undefined ? isCorrectOverride : byIndex ? idx === Number(correctAnswer) : optText === correctAnswer;
+          return this.listeningOptRepo.create({ questionId: q.id, optionText: optText, imageUrl: optImageUrl, matchKey: optMatchKey, isCorrect, orderIndex: idx });
+        }),
+      );
+    }
+
+    const qFull = await this.listeningQRepo.findOne({ where: { id: q.id }, relations: ['options'] });
+    const opts = (qFull?.options ?? []).sort((a, b) => a.orderIndex - b.orderIndex);
+    return {
+      id: q.id,
+      type: fromQuestionType(q.questionType),
+      question: q.questionText,
+      imageUrl: q.imageUrl,
+      matchTargets: q.matchTargets,
+      explanation: q.correctExplanation,
+      orderIndex: q.orderIndex,
+      options: opts.map((o) => ({ id: o.id, text: o.optionText, imageUrl: o.imageUrl, matchKey: o.matchKey, isCorrect: o.isCorrect })),
+    };
   }
 
-  async updateListeningQuestion(lessonId: string, contentId: string, qId: string, dto: Partial<{ questionText: string; questionType: QuestionType; correctExplanation: string }>) {
+  async updateListeningQuestion(lessonId: string, _blockId: string, qId: string, dto: any) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    const q = await this.listeningQRepo.findOne({ where: { id: qId, listeningId: contentId } });
+    const q = await this.listeningQRepo.findOne({ where: { id: qId }, relations: ['options'] });
     if (!q) throw new NotFoundException('Savol topilmadi');
-    Object.assign(q, dto);
-    return this.listeningQRepo.save(q);
+
+    if (dto.question !== undefined) q.questionText = dto.question;
+    if (dto.questionText !== undefined) q.questionText = dto.questionText;
+    if (dto.type !== undefined) q.questionType = toQuestionType(dto.type);
+    if (dto.questionType !== undefined) q.questionType = toQuestionType(dto.questionType);
+    if (dto.explanation !== undefined) q.correctExplanation = dto.explanation;
+    if (dto.correctExplanation !== undefined) q.correctExplanation = dto.correctExplanation;
+    if (dto.imageUrl !== undefined) q.imageUrl = dto.imageUrl ?? null;
+    if (dto.matchTargets !== undefined) q.matchTargets = dto.matchTargets ?? null;
+
+    await this.listeningQRepo.save(q);
+
+    if (dto.options !== undefined || dto.correctAnswer !== undefined) {
+      const rawOptions: any[] = dto.options ?? (q.options ?? []).map((o) => o.optionText);
+      const correctAnswer = String(dto.correctAnswer ?? (q.options ?? []).find((o) => o.isCorrect)?.optionText ?? '');
+      const byIndex = correctAnswer !== '' && !isNaN(Number(correctAnswer));
+      await this.listeningOptRepo.delete({ questionId: q.id });
+      await this.listeningOptRepo.save(
+        rawOptions.map((opt, idx) => {
+          const optText = typeof opt === 'string' ? opt : (opt.text ?? opt.optionText ?? '');
+          const optImageUrl = typeof opt === 'object' ? (opt.imageUrl ?? null) : null;
+          const optMatchKey = typeof opt === 'object' ? (opt.matchKey ?? null) : null;
+          const isCorrectOverride = typeof opt === 'object' && opt.isCorrect !== undefined ? opt.isCorrect : undefined;
+          const isCorrect = isCorrectOverride !== undefined ? isCorrectOverride : byIndex ? idx === Number(correctAnswer) : optText === correctAnswer;
+          return this.listeningOptRepo.create({ questionId: q.id, optionText: optText, imageUrl: optImageUrl, matchKey: optMatchKey, isCorrect, orderIndex: idx });
+        }),
+      );
+    }
+
+    const updated = await this.listeningQRepo.findOne({ where: { id: q.id }, relations: ['options'] });
+    const opts = (updated?.options ?? []).sort((a, b) => a.orderIndex - b.orderIndex);
+    return {
+      id: q.id,
+      type: fromQuestionType(q.questionType),
+      question: q.questionText,
+      imageUrl: q.imageUrl,
+      matchTargets: q.matchTargets,
+      explanation: q.correctExplanation,
+      orderIndex: q.orderIndex,
+      options: opts.map((o) => ({ id: o.id, text: o.optionText, imageUrl: o.imageUrl, matchKey: o.matchKey, isCorrect: o.isCorrect })),
+    };
   }
 
-  async deleteListeningQuestion(lessonId: string, contentId: string, qId: string) {
+  async deleteListeningQuestion(lessonId: string, _blockId: string, qId: string) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    const q = await this.listeningQRepo.findOne({ where: { id: qId, listeningId: contentId } });
+    const q = await this.listeningQRepo.findOne({ where: { id: qId } });
     if (!q) throw new NotFoundException('Savol topilmadi');
     await this.listeningQRepo.remove(q);
     return { message: "O'chirildi" };
   }
 
-  async addListeningOption(qId: string, dto: { optionText: string; isCorrect: boolean }) {
+  async addListeningOption(qId: string, dto: { optionText: string; isCorrect: boolean; imageUrl?: string; matchKey?: string }) {
     const q = await this.listeningQRepo.findOne({ where: { id: qId } });
     if (!q) throw new NotFoundException('Savol topilmadi');
     const count = await this.listeningOptRepo.count({ where: { questionId: qId } });
-    return this.listeningOptRepo.save(this.listeningOptRepo.create({ questionId: qId, ...dto, orderIndex: count }));
-  }
-
-  async deleteListeningOption(optionId: string) {
-    const opt = await this.listeningOptRepo.findOne({ where: { id: optionId } });
-    if (!opt) throw new NotFoundException('Variant topilmadi');
-    await this.listeningOptRepo.remove(opt);
-    return { message: "O'chirildi" };
+    const opt = await this.listeningOptRepo.save(
+      this.listeningOptRepo.create({ questionId: qId, optionText: dto.optionText, isCorrect: dto.isCorrect, imageUrl: dto.imageUrl ?? null, matchKey: dto.matchKey ?? null, orderIndex: count }),
+    );
+    return { id: opt.id, text: opt.optionText, imageUrl: opt.imageUrl, matchKey: opt.matchKey, isCorrect: opt.isCorrect, orderIndex: opt.orderIndex };
   }
 }

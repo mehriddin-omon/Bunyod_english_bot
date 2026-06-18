@@ -19,6 +19,7 @@ import { LessonsModule } from './modules/lessons/lessons.module';
 import { TeacherLessonsModule } from './modules/teacher-lessons/teacher-lessons.module';
 import { SectionsModule } from './modules/sections/sections.module';
 import { HomeModule } from './modules/home/home.module';
+import { UploadModule } from './modules/upload/upload.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { HomeModule } from './modules/home/home.module';
     TeacherLessonsModule,
     SectionsModule,
     HomeModule,
+    UploadModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: ResponseTransformInterceptor },

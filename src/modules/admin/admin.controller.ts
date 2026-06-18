@@ -14,8 +14,7 @@ export class AdminController {
   @Get('overview')
   @Roles(Role.admin, Role.superAdmin)
   async getOverview() {
-    const data = await this.adminService.getOverview();
-    return { statusCode: 200, message: 'OK', data };
+    return this.adminService.getOverview();
   }
 
   @Roles(Role.admin)

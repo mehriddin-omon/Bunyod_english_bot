@@ -144,6 +144,7 @@ Table listening_contents {
   lesson_id        uuid   [ref: > lessons.id]
   title            varchar [not null]
   file_id          varchar [not null, note: 'Telegram file_id yoki storage path']
+  image_url        varchar [note: 'Butun mashq uchun rasm (jadval, forma, sahna)']
   duration_seconds int
   order_index      int    [default: 0]
   created_at       timestamptz [default: `now()`]
@@ -167,8 +168,10 @@ Table listening_questions {
   id                  uuid   [pk, default: `gen_random_uuid()`]
   listening_id        uuid   [ref: > listening_contents.id]
   question_text       text   [not null]
-  question_type       varchar [not null, note: 'multiple_choice|fill_in_blank']
+  question_type       varchar [not null, note: 'multiple_choice|fill_in_blank|matching']
   correct_explanation text
+  image_url           varchar [note: 'Savol rasmi: sahna, forma yoki jadval']
+  match_targets       text    [note: 'JSON array: matching o\'ng tomoni ["Jane","Anna","Pat"]']
   order_index         int    [default: 0]
 
   indexes { listening_id }
@@ -179,6 +182,8 @@ Table listening_options {
   question_id   uuid    [ref: > listening_questions.id]
   option_text   text    [not null]
   is_correct    boolean [not null, default: false]
+  image_url     varchar [note: 'Variant rasm bo\'lsa (Ex.1 tipidagi image_choice)']
+  match_key     varchar [note: 'Matching uchun: bu variant nimaga mos keladi']
   order_index   int     [default: 0]
 
   indexes { question_id }

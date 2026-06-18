@@ -22,6 +22,12 @@ export class ListeningQuestion extends BaseEntity {
   @Column({ type: 'text', name: 'correct_explanation', nullable: true })
   correctExplanation: string | null;
 
+  @Column({ type: 'varchar', name: 'image_url', nullable: true })
+  imageUrl: string | null;
+
+  @Column({ type: 'jsonb', name: 'match_targets', nullable: true })
+  matchTargets: string[] | null;
+
   @Column({ type: 'int', name: 'order_index', default: 0 })
   orderIndex: number;
 

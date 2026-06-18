@@ -17,6 +17,12 @@ export class ListeningOption extends BaseEntity {
   @Column({ type: 'boolean', name: 'is_correct', default: false })
   isCorrect: boolean;
 
+  @Column({ type: 'varchar', name: 'image_url', nullable: true })
+  imageUrl: string | null;
+
+  @Column({ type: 'varchar', name: 'match_key', nullable: true })
+  matchKey: string | null;
+
   @Column({ type: 'int', name: 'order_index', default: 0 })
   orderIndex: number;
 }

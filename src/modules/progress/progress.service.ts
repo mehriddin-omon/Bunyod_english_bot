@@ -61,9 +61,9 @@ export class ProgressService {
     const xpEarned = Math.round(10 + (dto.score / 100) * 40);
     await this.updateGamification(userId, xpEarned, dto.timeSpent);
 
-    const nextLesson = await this.lessonRepo.findOne({
-      where: { unitId: lesson.unitId, orderIndex: lesson.orderIndex + 1 },
-    });
+    const nextLesson = lesson.unitId
+      ? await this.lessonRepo.findOne({ where: { unitId: lesson.unitId, orderIndex: lesson.orderIndex + 1 } })
+      : null;
 
     const gamification = await this.gamificationRepo.findOne({ where: { userId } });
 
@@ -71,7 +71,7 @@ export class ProgressService {
       progress: { status: progress.status, score: progress.score, time_spent: progress.timeSpentSec, completed_at: progress.completedAt },
       xp_earned: xpEarned,
       next_lesson: nextLesson
-        ? { id: nextLesson.id, lesson_code: nextLesson.lessonNumber, title: nextLesson.lessonName }
+        ? { id: nextLesson.id, lesson_code: nextLesson.orderIndex, title: nextLesson.lessonName }
         : null,
       streak_updated: true,
       new_streak: gamification?.streakCurrent ?? 1,
@@ -108,7 +108,7 @@ export class ProgressService {
         ],
       },
       current_lesson: inProgress?.lesson
-        ? { lesson_code: inProgress.lesson.lessonNumber, lesson_title: inProgress.lesson.lessonName }
+        ? { lesson_code: inProgress.lesson.orderIndex, lesson_title: inProgress.lesson.lessonName }
         : null,
     };
   }

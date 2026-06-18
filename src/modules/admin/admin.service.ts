@@ -6,7 +6,8 @@ import { User } from 'src/common/core/entitys/user.entity';
 import { Group } from 'src/common/core/entitys/group.entity';
 import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { DailyTracking } from 'src/common/core/entitys/daily-tracking.entity';
-import { Role, GroupStatus } from 'src/common/utils/enum';
+import { StudentProfile } from 'src/common/core/entitys/student-profile.entity';
+import { CefrLevel, Role, GroupStatus } from 'src/common/utils/enum';
 import { UpdateUserDto } from './dto/admin.dto';
 
 @Injectable()
@@ -20,6 +21,8 @@ export class AdminService {
     private readonly lessonRepository: Repository<Lesson>,
     @InjectRepository(DailyTracking)
     private readonly dailyTrackingRepository: Repository<DailyTracking>,
+    @InjectRepository(StudentProfile)
+    private readonly studentProfileRepository: Repository<StudentProfile>,
   ) {}
 
   async getOverview() {
@@ -65,6 +68,18 @@ export class AdminService {
       user.password = await bcrypt.hash(dto.password, 10);
     }
 
-    return this.userRepository.save(user);
+    await this.userRepository.save(user);
+
+    const finalRole = dto.role ?? user.role;
+    if (dto.cefrLevel !== undefined && finalRole === Role.student) {
+      let profile = await this.studentProfileRepository.findOne({ where: { userId } });
+      if (!profile) {
+        profile = this.studentProfileRepository.create({ userId });
+      }
+      profile.cefrLevel = dto.cefrLevel as CefrLevel;
+      await this.studentProfileRepository.save(profile);
+    }
+
+    return user;
   }
 }

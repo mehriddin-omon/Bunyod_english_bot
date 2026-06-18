@@ -22,6 +22,10 @@ export class SaveListeningDto {
   speakers?: { id: string; name: string }[];
 
   @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsOptional()
   @IsArray()
   transcript?: { speaker: string; timeStart: number; text: string }[];
 }

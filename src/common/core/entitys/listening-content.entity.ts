@@ -22,8 +22,14 @@ export class ListeningContent extends BaseEntity {
   @Column({ type: 'int', name: 'duration_seconds', nullable: true })
   durationSeconds: number | null;
 
-  @Column({ type: 'int', name: 'speaker_count', default: 1 })
-  speakerCount: number;
+  @Column({ type: 'varchar', name: 'track_code', nullable: true })
+  trackCode: string | null;
+
+  @Column({ type: 'jsonb', name: 'speakers', nullable: true })
+  speakers: { label: string; name: string }[] | null;
+
+  @Column({ type: 'varchar', name: 'image_url', nullable: true })
+  imageUrl: string | null;
 
   @Column({ type: 'int', name: 'order_index', default: 0 })
   orderIndex: number;
