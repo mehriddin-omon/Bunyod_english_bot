@@ -28,6 +28,9 @@ export class LessonProgress extends BaseEntity {
   @Column({ type: 'int', name: 'grammar_score', nullable: true })
   grammarScore: number | null;
 
+  @Column({ type: 'int', name: 'quiz_score', nullable: true })
+  quizScore: number | null;
+
   @Column({ type: 'int', name: 'vocabulary_score', nullable: true })
   vocabularyScore: number | null;
 

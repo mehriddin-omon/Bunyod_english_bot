@@ -6,10 +6,6 @@ export class CreateLessonDto {
 
   @IsOptional()
   @IsNumber()
-  unitNumber?: number | null;
-
-  @IsOptional()
-  @IsNumber()
   orderIndex?: number;
 
   @IsOptional()

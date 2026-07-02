@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
@@ -6,8 +6,11 @@ import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { Unit } from 'src/common/core/entitys/unit.entity';
 import { UserGamification } from 'src/common/core/entitys/gamification.entity';
 import { DailyTracking } from 'src/common/core/entitys/daily-tracking.entity';
+import { UserVocabularyProgress } from 'src/common/core/entitys/user-vocabulary-progress.entity';
 import { LessonProgressStatus } from 'src/common/utils/enum';
+import { VocabStatus } from 'src/common/core/entitys/user-vocabulary-progress.entity';
 import { CompleteLessonDto, UpsertProgressDto } from './dto/progress.dto';
+import { LessonGatingService } from 'src/common/services/lesson-gating.service';
 
 @Injectable()
 export class ProgressService {
@@ -26,11 +29,43 @@ export class ProgressService {
 
     @InjectRepository(DailyTracking)
     private readonly dailyRepo: Repository<DailyTracking>,
+
+    @InjectRepository(UserVocabularyProgress)
+    private readonly vocabProgressRepo: Repository<UserVocabularyProgress>,
+
+    private readonly lessonGatingService: LessonGatingService,
   ) {}
+
+  /**
+   * Talaba shu darsga (ketma-ketlik + guruh chegarasi bo'yicha) kira olishini tekshiradi.
+   * Rad etilsa ForbiddenException tashlaydi — dashboard'dagi ko'rsatishdan tashqari,
+   * bu haqiqiy server-side to'siq (client so'rovni to'g'ridan-to'g'ri chaqirsa ham).
+   */
+  private async assertLessonAccessible(userId: string, lessonId: string): Promise<void> {
+    const order = await this.lessonGatingService.getPublishedLessonOrder();
+    const lessonIndex = order.findIndex((l) => l.id === lessonId);
+    if (lessonIndex === -1) return; // nashr etilmagan/topilmagan dars — mavjud NotFoundException logikasi bunga ta'sir qilmaydi
+
+    const completedRecords = await this.progressRepo.find({
+      where: { userId, status: LessonProgressStatus.completed },
+    });
+    const completedSet = new Set(completedRecords.map((p) => p.lessonId));
+
+    const allPriorCompleted = order.slice(0, lessonIndex).every((l) => completedSet.has(l.id));
+    if (!allPriorCompleted) {
+      throw new ForbiddenException('Oldingi darsni tugatmasdan bu darsga o\'ta olmaysiz');
+    }
+
+    const { ceilingIndex } = await this.lessonGatingService.computeEffectiveCeiling(userId);
+    if (ceilingIndex !== null && lessonIndex > ceilingIndex) {
+      throw new ForbiddenException('Bu dars hali guruhingiz uchun ochilmagan');
+    }
+  }
 
   async startLesson(userId: string, lessonId: string) {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
+    await this.assertLessonAccessible(userId, lessonId);
 
     let progress = await this.progressRepo.findOne({ where: { userId, lessonId } });
     if (!progress) {
@@ -46,6 +81,7 @@ export class ProgressService {
   async completeLesson(userId: string, lessonId: string, dto: CompleteLessonDto) {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId }, relations: ['unit'] });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
+    await this.assertLessonAccessible(userId, lessonId);
 
     let progress = await this.progressRepo.findOne({ where: { userId, lessonId } });
     if (!progress) {
@@ -86,7 +122,15 @@ export class ProgressService {
 
     const today = new Date().toISOString().split('T')[0];
     const daily = await this.dailyRepo.findOne({ where: { userId, date: today } });
-    const totalLessons = await this.lessonRepo.count();
+    const [totalLessons, learnedWords] = await Promise.all([
+      this.lessonRepo.count(),
+      this.vocabProgressRepo.count({
+        where: [
+          { userId, status: VocabStatus.learning },
+          { userId, status: VocabStatus.mastered },
+        ],
+      }),
+    ]);
     const avgScore = completed.length
       ? Math.round(completed.reduce((s, p) => s + (p.score ?? 0), 0) / completed.length)
       : 0;
@@ -96,6 +140,7 @@ export class ProgressService {
       total_lessons: totalLessons,
       completed_lessons: completed.length,
       completed_percent: totalLessons ? Math.round((completed.length / totalLessons) * 100) : 0,
+      learned_words: learnedWords,
       avg_score: avgScore,
       today_goal: {
         target_minutes: daily?.goalMinutes ?? 30,
@@ -108,7 +153,7 @@ export class ProgressService {
         ],
       },
       current_lesson: inProgress?.lesson
-        ? { lesson_code: inProgress.lesson.orderIndex, lesson_title: inProgress.lesson.lessonName }
+        ? { id: inProgress.lesson.id, lesson_code: inProgress.lesson.orderIndex, lesson_title: inProgress.lesson.lessonName }
         : null,
     };
   }
@@ -124,6 +169,7 @@ export class ProgressService {
   async upsertProgress(userId: string, dto: UpsertProgressDto) {
     const lesson = await this.lessonRepo.findOne({ where: { id: dto.lessonId } });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
+    await this.assertLessonAccessible(userId, dto.lessonId);
 
     let progress = await this.progressRepo.findOne({ where: { userId, lessonId: dto.lessonId } });
     if (!progress) {

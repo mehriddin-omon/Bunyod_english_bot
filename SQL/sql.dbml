@@ -194,35 +194,61 @@ Table listening_options {
 Table vocabularys {
   id              uuid   [pk, default: `gen_random_uuid()`]
   word            varchar [not null]
+  lang            varchar [not null, default: 'en', note: 'en|uz|ru']
   ipa             varchar [note: 'Talaffuz: /ˈmem.ə.rə.bəl/']
   pos             varchar [note: 'noun|verb|adjective|adverb|phrase']
-  uzbek_translation text
-  topic           varchar [note: 'nature|feelings|travel|daily']
-  cefr_level      varchar [note: 'A1|A2|B1|B2|C1|C2']
-  lang            varchar [default: 'en']
-  voice_file_id   varchar [note: 'Talaffuz audio fayl ID']
+  lesson_id       uuid    [ref: > lessons.id]
+  voice_file_id   varchar [note: 'Google TTS orqali yaratilgan audio fayl yo\'li']
   image_url       varchar
-  example         text    [note: 'Asosiy misol (qisqa)']
   order_index     bigint  [default: 0]
   created_at      timestamptz [default: `now()`]
   updated_at      timestamptz [default: `now()`]
 
   indexes {
-    word
-    topic
-    cefr_level
+    (word, lang) [unique]
+    lesson_id
+  }
+}
+
+Table vocabulary_relations {
+  id              uuid   [pk, default: `gen_random_uuid()`]
+  vocabulary_id   uuid   [ref: > vocabularys.id]
+  translation_id  uuid   [ref: > vocabularys.id]
+  attempts        bigint [not null, default: 0]
+  wrong_attempts  bigint [not null, default: 0]
+  difficulty      float  [not null, default: 0]
+  created_at      timestamptz [default: `now()`]
+  updated_at      timestamptz [default: `now()`]
+
+  indexes {
+    vocabulary_id
+    translation_id
+  }
+}
+
+Table vocabulary_sessions {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  user_id         uuid        [ref: > users.id, not null]
+  completed_count int         [not null, default: 0]
+  time_spent_sec  int         [not null, default: 0]
+  created_at      timestamptz [default: `now()`]
+  updated_at      timestamptz [default: `now()`]
+
+  indexes {
+    (user_id, created_at)
+    user_id
   }
 }
 
 Table vocabulary_examples {
-  id               uuid   [pk, default: `gen_random_uuid()`]
-  vocabulary_id    uuid   [ref: > vocabularys.id]
-  english_text     text   [not null]
-  uzbek_text       text
-  highlight_word   varchar
-  order_index      int    [default: 0]
+  id             uuid   [pk, default: `gen_random_uuid()`]
+  pair_id        uuid   [ref: > vocabulary_relations.id]
+  english_text   text   [not null]
+  uzbek_text     text
+  highlight_word varchar
+  order_index    int    [default: 0]
 
-  indexes { vocabulary_id }
+  indexes { pair_id }
 }
 
 Table vocabulary_synonyms {
@@ -243,13 +269,59 @@ Table vocabulary_antonyms {
   }
 }
 
-Table lesson_vocabulary {
-  lesson_id      uuid [ref: > lessons.id]
-  vocabulary_id  uuid [ref: > vocabularys.id]
-  order_index    int  [default: 0]
+
+// ─── QUIZ (GRAMMATIKA MUSTAHKAMLASH) ─────────────────────────
+
+Table quiz_contents {
+  id          uuid    [pk, default: `gen_random_uuid()`]
+  lesson_id   uuid    [ref: > lessons.id]
+  title       varchar [not null, default: 'Quiz']
+  order_index int     [default: 0]
+  created_at  timestamptz [default: `now()`]
+  updated_at  timestamptz [default: `now()`]
+
+  indexes { lesson_id }
+}
+
+Table quiz_exercises {
+  id            uuid    [pk, default: `gen_random_uuid()`]
+  quiz_id       uuid    [ref: > quiz_contents.id]
+  title         varchar [note: 'Exercise 1, Exercise 2...']
+  instructions  text    [note: 'Match "Personal pronouns" — kishilik olmoshlarini moslashtiring']
+  exercise_type varchar [not null, note: 'matching|fill_in_blank|multiple_choice']
+  order_index   int     [default: 0]
+  created_at    timestamptz [default: `now()`]
+  updated_at    timestamptz [default: `now()`]
+
+  indexes { quiz_id }
+}
+
+Table quiz_items {
+  id             uuid    [pk, default: `gen_random_uuid()`]
+  exercise_id    uuid    [ref: > quiz_exercises.id]
+  item_text      text    [not null, note: 'Sophie | Ali ____ a student']
+  correct_answer varchar [not null, note: 'she | is']
+  options        text    [note: 'JSON: faqat multiple_choice uchun ["am","is","are"]']
+  order_index    int     [default: 0]
+  created_at     timestamptz [default: `now()`]
+  updated_at     timestamptz [default: `now()`]
+
+  indexes { exercise_id }
+}
+
+Table quiz_student_answers {
+  id           uuid    [pk, default: `gen_random_uuid()`]
+  user_id      uuid    [ref: > users.id]
+  item_id      uuid    [ref: > quiz_items.id]
+  quiz_id      uuid    [ref: > quiz_contents.id]
+  given_answer varchar [not null, note: 'O\'quvchi bergan javob']
+  is_correct   boolean [not null, default: false]
+  answered_at  timestamptz [default: `now()`]
 
   indexes {
-    (lesson_id, vocabulary_id) [pk]
+    (user_id, item_id) [unique]
+    user_id
+    quiz_id
   }
 }
 
@@ -288,6 +360,7 @@ Table lesson_progress {
   status           varchar [not null, default: 'not_started']
   score            int    [note: 'Jami ball 0–100']
   grammar_score    int    [note: '0–100, null = bu darsda yo\'q']
+  quiz_score       int    [note: '0–100, null = quiz bloki yo\'q']
   vocabulary_score int    [note: '0–100, null = bu darsda yo\'q']
   listening_score  int    [note: '0–100, null = bu darsda yo\'q']
   reading_score    int    [note: '0–100, null = bu darsda yo\'q']
@@ -309,22 +382,36 @@ Table lesson_progress {
 Table user_vocabulary_progress {
   id               uuid   [pk, default: `gen_random_uuid()`]
   user_id          uuid   [ref: > users.id]
-  vocabulary_id    uuid   [ref: > vocabularys.id]
+  pair_id          uuid   [ref: > vocabulary_relations.id]
   status           varchar [not null, default: 'new', note: 'new|learning|mastered']
-  strength         int    [not null, default: 0, note: '0–100']
   attempts         int    [not null, default: 0]
   wrong_attempts   int    [not null, default: 0]
-  is_hard          boolean [not null, default: false]
-  last_reviewed_at timestamptz
   next_review_at   timestamptz
   created_at       timestamptz [default: `now()`]
   updated_at       timestamptz [default: `now()`]
 
   indexes {
-    (user_id, vocabulary_id) [unique]
+    (user_id, pair_id) [unique]
     user_id
     next_review_at
     status
+  }
+}
+
+Table vocabulary_practice_logs {
+  id          uuid        [pk, default: `gen_random_uuid()`]
+  user_id     uuid        [ref: > users.id, not null]
+  pair_id     uuid        [ref: > vocabulary_relations.id, not null]
+  mode        varchar     [not null, note: 'flashcard|multiple_choice|typing|audio']
+  correct     boolean     [not null]
+  answered_at timestamptz [default: `now()`]
+  created_at  timestamptz [default: `now()`]
+  updated_at  timestamptz [default: `now()`]
+
+  indexes {
+    (user_id, answered_at)
+    (user_id, pair_id)
+    user_id
   }
 }
 
@@ -626,23 +713,5 @@ Table messages {
     receiver_id
     (receiver_id, is_read)
     created_at
-  }
-}
-
-// ─── VOCABULARY RELATIONS (mavjud, saqlanadi) ────────────────
-
-Table vocabulary_relations {
-  id              uuid   [pk, default: `gen_random_uuid()`]
-  vocabulary_id   uuid   [ref: > vocabularys.id]
-  translation_id  uuid   [ref: > vocabularys.id]
-  attempts        bigint [not null, default: 0]
-  wrong_attempts  bigint [not null, default: 0]
-  difficulty      float  [not null, default: 0]
-  created_at      timestamptz [default: `now()`]
-  updated_at      timestamptz [default: `now()`]
-
-  indexes {
-    vocabulary_id
-    translation_id
   }
 }

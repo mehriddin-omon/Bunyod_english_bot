@@ -9,9 +9,6 @@ export class Lesson extends BaseEntity {
   @Column({ type: 'varchar', name: 'lesson_name' })
   lessonName: string;
 
-  @Column({ type: 'int', name: 'unit_number', nullable: true })
-  unitNumber: number | null;
-
   @Column({ type: 'varchar', name: 'cefr_level', nullable: true })
   cefrLevel: string | null;
 
@@ -34,4 +31,7 @@ export class Lesson extends BaseEntity {
 
   @Column({ type: 'varchar', name: 'status', enum: LessonStatus, default: LessonStatus.draft })
   status: LessonStatus;
+
+  @Column({ type: 'int', name: 'estimated_minutes', default: 15 })
+  estimatedMinutes: number;
 }

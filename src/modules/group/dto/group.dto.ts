@@ -60,3 +60,23 @@ export class AddStudentsDto {
   @IsArray()
   studentIds: string[];
 }
+
+export class SetAutoAdvanceDto {
+  @IsBoolean()
+  enabled: boolean;
+}
+
+export class SetManualCeilingDto {
+  @IsNumber()
+  ceilingIndex: number;
+}
+
+export class SetStudentFreeDto {
+  @IsBoolean()
+  isFree: boolean;
+}
+
+export class UnlockNextDto {
+  @IsArray()
+  studentIds: string[];
+}

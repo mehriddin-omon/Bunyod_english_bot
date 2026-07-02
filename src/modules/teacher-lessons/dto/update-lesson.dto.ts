@@ -7,10 +7,6 @@ export class UpdateLessonDto {
 
   @IsOptional()
   @IsNumber()
-  unitNumber?: number | null;
-
-  @IsOptional()
-  @IsNumber()
   orderIndex?: number;
 
   @IsOptional()

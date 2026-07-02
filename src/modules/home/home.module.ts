@@ -8,18 +8,22 @@ import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { Unit } from 'src/common/core/entitys/unit.entity';
 import { UserGamification } from 'src/common/core/entitys/gamification.entity';
 import { DailyTracking } from 'src/common/core/entitys/daily-tracking.entity';
-import { Vocabulary } from 'src/common/core/entitys/vocabulary.entity';
+import { UserVocabularyProgress } from 'src/common/core/entitys/user-vocabulary-progress.entity';
+import { VocabularyRelation } from 'src/common/core/entitys/vocabulary-relation.entity';
+import { LessonGatingModule } from 'src/common/services/lesson-gating.module';
 
 @Module({
   imports: [
     GuardModule,
+    LessonGatingModule,
     TypeOrmModule.forFeature([
       LessonProgress,
       Lesson,
       Unit,
       UserGamification,
       DailyTracking,
-      Vocabulary,
+      UserVocabularyProgress,
+      VocabularyRelation,
     ]),
   ],
   providers: [HomeService],

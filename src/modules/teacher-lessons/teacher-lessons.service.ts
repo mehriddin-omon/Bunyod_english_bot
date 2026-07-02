@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike, In } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Lesson } from 'src/common/core/entitys/lesson.entity';
+import { Unit } from 'src/common/core/entitys/unit.entity';
 import { GrammarContent } from 'src/common/core/entitys/grammar-content.entity';
 import { ReadingContent } from 'src/common/core/entitys/reading-content.entity';
 import { ListeningContent } from 'src/common/core/entitys/listening-content.entity';
@@ -14,6 +15,9 @@ export class TeacherLessonsService {
   constructor(
     @InjectRepository(Lesson)
     private readonly lessonRepo: Repository<Lesson>,
+
+    @InjectRepository(Unit)
+    private readonly unitRepo: Repository<Unit>,
 
     @InjectRepository(GrammarContent)
     private readonly grammarRepo: Repository<GrammarContent>,
@@ -52,9 +56,9 @@ export class TeacherLessonsService {
     return {
       id: lesson.id,
       title: lesson.lessonName,
-      lessonCode: lesson.unitNumber != null ? `${lesson.unitNumber}.${lesson.orderIndex}` : null,
+      lessonCode: lesson.unit?.number != null ? `${lesson.unit.number}.${lesson.orderIndex}` : null,
       orderIndex: lesson.orderIndex,
-      unitNumber: lesson.unitNumber ?? null,
+      unitNumber: lesson.unit?.number ?? null,
       cefrLevel: lesson.cefrLevel ?? null,
       status: lesson.status,
       group: lesson.group ? { id: lesson.group.id, name: lesson.group.name, color: lesson.group.color } : null,
@@ -69,18 +73,20 @@ export class TeacherLessonsService {
     const { status, unitNumber, search, page = 1, limit = 50 } = query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const where: any = {};
-    if (status) where.status = status;
-    if (unitNumber) where.unitNumber = Number(unitNumber);
-    if (search) where.lessonName = ILike(`%${search}%`);
+    const qb = this.lessonRepo
+      .createQueryBuilder('l')
+      .leftJoinAndSelect('l.unit',  'unit')
+      .leftJoinAndSelect('l.group', 'grp')
+      .orderBy('unit.number',  'ASC')
+      .addOrderBy('l.orderIndex', 'ASC');
 
-    const [lessons, total] = await this.lessonRepo.findAndCount({
-      where,
-      relations: ['group'],
-      order: { createdAt: 'DESC' },
-      skip,
-      take: Number(limit),
-    });
+    if (status)     qb.andWhere('l.status = :status', { status });
+    if (search)     qb.andWhere('l.lesson_name ILIKE :search', { search: `%${search}%` });
+    if (unitNumber) qb.andWhere('unit.number = :unitNumber', { unitNumber: Number(unitNumber) });
+
+    qb.skip(skip).take(Number(limit));
+
+    const [lessons, total] = await qb.getManyAndCount();
 
     const allLessons = await this.lessonRepo.find();
     const now = new Date();
@@ -100,9 +106,9 @@ export class TeacherLessonsService {
       return {
         id: lesson.id,
         title: lesson.lessonName,
-        lessonCode: lesson.unitNumber != null ? `${lesson.unitNumber}.${lesson.orderIndex}` : null,
+        lessonCode: lesson.unit?.number != null ? `${lesson.unit.number}.${lesson.orderIndex}` : null,
         orderIndex: lesson.orderIndex,
-        unitNumber: lesson.unitNumber ?? null,
+        unitNumber: lesson.unit?.number ?? null,
         cefrLevel: lesson.cefrLevel ?? null,
         status: lesson.status,
         group: lesson.group ? { id: lesson.group.id, name: lesson.group.name, color: lesson.group.color } : null,
@@ -125,7 +131,6 @@ export class TeacherLessonsService {
   async createLesson(dto: CreateLessonDto) {
     const lesson = this.lessonRepo.create({
       lessonName: dto.title,
-      unitNumber: dto.unitNumber ?? null,
       orderIndex: dto.orderIndex ?? 0,
       cefrLevel: dto.cefrLevel ?? null,
       groupId: dto.groupId ?? null,
@@ -136,7 +141,7 @@ export class TeacherLessonsService {
   }
 
   async getLessonById(lessonId: string) {
-    const lesson = await this.lessonRepo.findOne({ where: { id: lessonId }, relations: ['group'] });
+    const lesson = await this.lessonRepo.findOne({ where: { id: lessonId }, relations: ['group', 'unit'] });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
     const [blockInfoMap, grammar, reading, listening] = await Promise.all([
       this.getBlockInfo([lessonId]),
@@ -170,15 +175,14 @@ export class TeacherLessonsService {
   }
 
   async updateLesson(lessonId: string, dto: UpdateLessonDto) {
-    const lesson = await this.lessonRepo.findOne({ where: { id: lessonId }, relations: ['group'] });
+    const lesson = await this.lessonRepo.findOne({ where: { id: lessonId }, relations: ['group', 'unit'] });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
     if (dto.title      !== undefined) lesson.lessonName = dto.title;
-    if (dto.unitNumber !== undefined) lesson.unitNumber  = dto.unitNumber;
     if (dto.orderIndex !== undefined) lesson.orderIndex  = dto.orderIndex;
     if (dto.cefrLevel  !== undefined) lesson.cefrLevel   = dto.cefrLevel;
     if (dto.groupId    !== undefined) lesson.groupId     = dto.groupId;
     await this.lessonRepo.save(lesson);
-    const updated = await this.lessonRepo.findOne({ where: { id: lessonId }, relations: ['group'] });
+    const updated = await this.lessonRepo.findOne({ where: { id: lessonId }, relations: ['group', 'unit'] });
     const blockInfoMap = await this.getBlockInfo([lessonId]);
     const info = blockInfoMap.get(lessonId) ?? { types: [], count: 0 };
     return this.formatLesson(updated!, info.types, info.count);
@@ -210,7 +214,6 @@ export class TeacherLessonsService {
     if (!original) throw new NotFoundException('Dars topilmadi');
     const copy = this.lessonRepo.create({
       lessonName: `${original.lessonName} (copy)`,
-      unitNumber: original.unitNumber,
       cefrLevel: original.cefrLevel,
       status: LessonStatus.draft,
     });
@@ -219,12 +222,12 @@ export class TeacherLessonsService {
   }
 
   async getUnitNumbers() {
-    const lessons = await this.lessonRepo
-      .createQueryBuilder('l')
-      .select('DISTINCT l.unit_number', 'unitNumber')
-      .where('l.unit_number IS NOT NULL')
-      .orderBy('l.unit_number', 'ASC')
+    const units = await this.unitRepo
+      .createQueryBuilder('u')
+      .innerJoin('lessons', 'l', 'l.unit_id = u.id')
+      .select('DISTINCT u.number', 'number')
+      .orderBy('u.number', 'ASC')
       .getRawMany();
-    return { data: lessons.map((r) => Number(r.unitNumber)).filter((n) => !isNaN(n)) };
+    return { data: units.map((r) => Number(r.number)).filter((n) => !isNaN(n)) };
   }
 }

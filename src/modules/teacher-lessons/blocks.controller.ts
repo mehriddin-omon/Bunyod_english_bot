@@ -141,4 +141,97 @@ export class BlocksController {
   addListeningOption(@Param('qId') qId: string, @Body() dto: { optionText: string; isCorrect: boolean; imageUrl?: string; matchKey?: string }) {
     return this.svc.addListeningOption(qId, dto);
   }
+
+  // ─── Quiz ─────────────────────────────────────────────────────
+
+  @Get('blocks/:blockId/quiz')
+  getQuiz(@Param('lessonId') lessonId: string, @Param('blockId') blockId: string) {
+    return this.svc.getQuiz(lessonId, blockId);
+  }
+
+  @Put('blocks/:blockId/quiz')
+  saveQuiz(@Param('lessonId') lessonId: string, @Param('blockId') blockId: string, @Body() dto: { title?: string }) {
+    return this.svc.saveQuiz(lessonId, blockId, dto);
+  }
+
+  @Post('blocks/:blockId/quiz/exercises')
+  @HttpCode(HttpStatus.CREATED)
+  addExercise(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Body() dto: { title?: string; instructions?: string; exerciseType: string },
+  ) {
+    return this.svc.addExercise(lessonId, blockId, dto);
+  }
+
+  @Put('blocks/:blockId/quiz/exercises/reorder')
+  reorderExercises(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Body('exerciseIds') exerciseIds: string[],
+  ) {
+    return this.svc.reorderExercises(lessonId, blockId, exerciseIds);
+  }
+
+  @Put('blocks/:blockId/quiz/exercises/:exerciseId')
+  updateExercise(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+    @Body() dto: { title?: string; instructions?: string; exerciseType?: string },
+  ) {
+    return this.svc.updateExercise(lessonId, blockId, exerciseId, dto);
+  }
+
+  @Delete('blocks/:blockId/quiz/exercises/:exerciseId')
+  deleteExercise(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+  ) {
+    return this.svc.deleteExercise(lessonId, blockId, exerciseId);
+  }
+
+  @Post('blocks/:blockId/quiz/exercises/:exerciseId/items')
+  @HttpCode(HttpStatus.CREATED)
+  addItem(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+    @Body() dto: { itemText: string; correctAnswer: string; options?: string[] },
+  ) {
+    return this.svc.addItem(lessonId, blockId, exerciseId, dto);
+  }
+
+  @Put('blocks/:blockId/quiz/exercises/:exerciseId/items/reorder')
+  reorderItems(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+    @Body('itemIds') itemIds: string[],
+  ) {
+    return this.svc.reorderItems(lessonId, blockId, exerciseId, itemIds);
+  }
+
+  @Put('blocks/:blockId/quiz/exercises/:exerciseId/items/:itemId')
+  updateItem(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: { itemText?: string; correctAnswer?: string; options?: string[] | null },
+  ) {
+    return this.svc.updateItem(lessonId, blockId, exerciseId, itemId, dto);
+  }
+
+  @Delete('blocks/:blockId/quiz/exercises/:exerciseId/items/:itemId')
+  deleteItem(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+    @Param('itemId') itemId: string,
+  ) {
+    return this.svc.deleteItem(lessonId, blockId, exerciseId, itemId);
+  }
+
 }

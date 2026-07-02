@@ -26,6 +26,12 @@ export class Group extends BaseEntity {
   @Column({ type: 'varchar', name: 'status', enum: GroupStatus, default: GroupStatus.active })
   status: GroupStatus;
 
+  @Column({ type: 'boolean', name: 'auto_advance_enabled', default: true })
+  autoAdvanceEnabled: boolean;
+
+  @Column({ type: 'int', name: 'manual_lesson_ceiling', nullable: true })
+  manualLessonCeiling: number | null;
+
   @ManyToMany(() => User)
   @JoinTable({
     name: 'group_members',

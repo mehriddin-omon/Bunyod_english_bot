@@ -52,12 +52,6 @@ export enum CefrLevel {
   C2 = 'C2',
 }
 
-export enum VocabStatus {
-  new = 'new',
-  learning = 'learning',
-  mastered = 'mastered',
-}
-
 export enum SkillType {
   grammar = 'grammar',
   reading = 'reading',

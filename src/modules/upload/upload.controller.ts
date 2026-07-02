@@ -39,15 +39,14 @@ export class UploadController {
   constructor(private readonly configService: ConfigService) {}
 
   private buildUrl(folder: string, filename: string): string {
-    const baseUrl = this.configService.get<string>('APP_URL') || 'http://localhost:2003';
-    return `${baseUrl}/uploads/${folder}/${filename}`;
+    return `/uploads/${folder}/${filename}`;
   }
 
-  private deleteOldFile(oldUrl: string): void {
+  private deleteOldFile(oldPath: string): void {
     try {
-      const baseUrl = this.configService.get<string>('APP_URL') || 'http://localhost:2003';
-      const relativePath = oldUrl.replace(`${baseUrl}/`, '');
-      const filePath = join(process.cwd(), relativePath);
+      // oldPath may be a relative path (/uploads/...) or a legacy full URL
+      const relative = oldPath.replace(/^https?:\/\/[^/]+/, '');
+      const filePath = join(process.cwd(), relative);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     } catch {
       // eski fayl o'chirilmasa jarayon to'xtatilmaydi

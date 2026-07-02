@@ -1,13 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
 import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { Unit } from 'src/common/core/entitys/unit.entity';
 import { UserGamification } from 'src/common/core/entitys/gamification.entity';
 import { DailyTracking } from 'src/common/core/entitys/daily-tracking.entity';
-import { Vocabulary } from 'src/common/core/entitys/vocabulary.entity';
+import { UserVocabularyProgress } from 'src/common/core/entitys/user-vocabulary-progress.entity';
 import { LessonProgressStatus, LessonStatus } from 'src/common/utils/enum';
+import { VocabStatus } from 'src/common/core/entitys/user-vocabulary-progress.entity';
+import { VocabularyRelation } from 'src/common/core/entitys/vocabulary-relation.entity';
+import { LessonGatingService } from 'src/common/services/lesson-gating.service';
 
 @Injectable()
 export class HomeService {
@@ -27,8 +30,13 @@ export class HomeService {
     @InjectRepository(DailyTracking)
     private readonly dailyRepo: Repository<DailyTracking>,
 
-    @InjectRepository(Vocabulary)
-    private readonly vocabRepo: Repository<Vocabulary>,
+    @InjectRepository(UserVocabularyProgress)
+    private readonly vocabProgressRepo: Repository<UserVocabularyProgress>,
+
+    @InjectRepository(VocabularyRelation)
+    private readonly vocabRelationRepo: Repository<VocabularyRelation>,
+
+    private readonly lessonGatingService: LessonGatingService,
   ) {}
 
   async getStats(userId: string) {
@@ -47,12 +55,19 @@ export class HomeService {
     const today = new Date().toISOString().split('T')[0];
     const daily = await this.dailyRepo.findOne({ where: { userId, date: today } });
 
-    const oneWeekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-    const weeklyCompleted = completedRecords.filter(
-      (p) => p.completedAt && p.completedAt.toISOString().split('T')[0] >= oneWeekAgo,
-    ).length;
-
-    const totalWords = await this.vocabRepo.count();
+    const now = new Date();
+    const oneWeekAgo = new Date(Date.now() - 7 * 86400000);
+    const [totalWords, learningWords, masteredWords, overdueWords, weeklyNew] = await Promise.all([
+      this.vocabRelationRepo.count(),
+      this.vocabProgressRepo.count({ where: { userId, status: VocabStatus.learning } }),
+      this.vocabProgressRepo.count({ where: { userId, status: VocabStatus.mastered } }),
+      this.vocabProgressRepo.count({ where: { userId, nextReviewAt: LessThan(now) } }),
+      this.vocabProgressRepo
+        .createQueryBuilder('uvp')
+        .where('uvp.user_id = :userId', { userId })
+        .andWhere('uvp.created_at >= :oneWeekAgo', { oneWeekAgo })
+        .getCount(),
+    ]);
     const prevAvgScore = Math.max(0, avgScore - (gamification?.xpWeekly ? 3 : 0));
 
     return {
@@ -63,7 +78,10 @@ export class HomeService {
       },
       words: {
         total: totalWords,
-        weeklyNew: weeklyCompleted * 2,
+        learning: learningWords,
+        mastered: masteredWords,
+        overdue: overdueWords,
+        weeklyNew,
       },
       averageScore: {
         score: avgScore,
@@ -94,10 +112,7 @@ export class HomeService {
       order: { number: 'ASC' },
     });
 
-    const allLessons = await this.lessonRepo.find({
-      where: { status: LessonStatus.published },
-      order: { unitId: 'ASC', orderIndex: 'ASC' },
-    });
+    const allLessons = await this.lessonGatingService.getPublishedLessonOrder();
 
     const completedSet = new Set<string>();
     const records = await this.progressRepo.find({ where: { userId, status: LessonProgressStatus.completed } });
@@ -111,18 +126,38 @@ export class HomeService {
       return unitLessons.length > 0 && unitLessons.every((l) => completedSet.has(l.id));
     }).length;
 
-    const nextLesson = allLessons.find((l) => !completedSet.has(l.id));
-    if (!nextLesson) return null;
+    const nextLessonIndex = allLessons.findIndex((l) => !completedSet.has(l.id));
+    if (nextLessonIndex === -1) return null;
 
-    const unit = units.find((u) => u.id === nextLesson.unitId);
+    const nextLesson = allLessons[nextLessonIndex];
     const progress = completedCount > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
 
+    const { ceilingIndex, groupId } = await this.lessonGatingService.computeEffectiveCeiling(userId);
+
+    if (ceilingIndex !== null && nextLessonIndex > ceilingIndex) {
+      const unit = units.find((u) => u.id === nextLesson.unitId);
+      return {
+        status: 'locked' as const,
+        lockedLessonId: nextLesson.id,
+        lockedLessonTitle: nextLesson.lessonName,
+        groupId,
+        message: 'Guruhingiz hali bu darsga yetib kelmadi',
+        sectionNumber: unit?.number ?? null,
+        totalSections,
+        completedSections,
+        progress,
+      };
+    }
+
+    const unit = units.find((u) => u.id === nextLesson.unitId);
     return {
+      status: 'unlocked' as const,
       lessonId: nextLesson.id,
       title: nextLesson.lessonName,
       sectionNumber: unit?.number ?? null,
       totalSections,
       completedSections,
+      remainingMinutes: nextLesson.estimatedMinutes,
       progress,
     };
   }

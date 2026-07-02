@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Group } from 'src/common/core/entitys/group.entity';
@@ -7,8 +7,18 @@ import { Schedule } from 'src/common/core/entitys/schedule.entity';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
 import { Notification } from 'src/common/core/entitys/notification.entity';
 import { UserGamification } from 'src/common/core/entitys/gamification.entity';
+import { GroupMemberSettings } from 'src/common/core/entitys/group-member-settings.entity';
 import { Role, NotificationType, LessonProgressStatus } from 'src/common/utils/enum';
-import { CreateGroupDto, UpdateGroupDto, AddStudentsDto } from './dto/group.dto';
+import {
+  CreateGroupDto,
+  UpdateGroupDto,
+  AddStudentsDto,
+  SetAutoAdvanceDto,
+  SetManualCeilingDto,
+  SetStudentFreeDto,
+  UnlockNextDto,
+} from './dto/group.dto';
+import { LessonGatingService } from 'src/common/services/lesson-gating.service';
 
 @Injectable()
 export class GroupService {
@@ -30,6 +40,11 @@ export class GroupService {
 
     @InjectRepository(UserGamification)
     private readonly gamificationRepo: Repository<UserGamification>,
+
+    @InjectRepository(GroupMemberSettings)
+    private readonly settingsRepo: Repository<GroupMemberSettings>,
+
+    private readonly lessonGatingService: LessonGatingService,
   ) {}
 
   async getAllGroups(userId: string, role: string) {
@@ -271,6 +286,7 @@ export class GroupService {
 
     group.members = group.members.filter((m) => m.id !== studentId);
     await this.groupRepo.save(group);
+    await this.settingsRepo.delete({ groupId, userId: studentId });
 
     return { message: "O'quvchi guruhdan chiqarildi" };
   }
@@ -286,6 +302,117 @@ export class GroupService {
 
     const schedule = await this.scheduleRepo.find({ where: { groupId } });
     return { groupId: group.id, groupName: group.name, schedule };
+  }
+
+  async setAutoAdvance(groupId: string, dto: SetAutoAdvanceDto, userId: string, role: string) {
+    const group = await this.groupRepo.findOne({ where: { id: groupId } });
+    if (!group) throw new NotFoundException('Group not found');
+    if (role === Role.teacher && group.teacherId !== userId) throw new ForbiddenException('Access denied');
+
+    if (!dto.enabled && group.autoAdvanceEnabled) {
+      // Auto-advance o'chirilganda, joriy avtomatik hisoblangan chegarani saqlab qolamiz
+      // (guruh to'satdan 0-chegaraga qaytib ketmasligi uchun).
+      group.manualLessonCeiling = await this.lessonGatingService.getGroupCeilingIndex(group);
+    }
+    group.autoAdvanceEnabled = dto.enabled;
+    return this.groupRepo.save(group);
+  }
+
+  async setManualCeiling(groupId: string, dto: SetManualCeilingDto, userId: string, role: string) {
+    const group = await this.groupRepo.findOne({ where: { id: groupId } });
+    if (!group) throw new NotFoundException('Group not found');
+    if (role === Role.teacher && group.teacherId !== userId) throw new ForbiddenException('Access denied');
+    if (group.autoAdvanceEnabled) {
+      throw new BadRequestException("Avval auto-advance'ni o'chiring, keyin chegarani qo'lda o'rnating");
+    }
+
+    group.manualLessonCeiling = dto.ceilingIndex;
+    return this.groupRepo.save(group);
+  }
+
+  async getGatingStatus(groupId: string, userId: string, role: string) {
+    const group = await this.groupRepo.findOne({ where: { id: groupId }, relations: ['members'] });
+    if (!group) throw new NotFoundException('Group not found');
+    if (role === Role.teacher && group.teacherId !== userId) throw new ForbiddenException('Access denied');
+
+    const lessonOrder = await this.lessonGatingService.getPublishedLessonOrder();
+    const ceilingIndex = await this.lessonGatingService.getGroupCeilingIndex(group);
+    const ceilingLesson = lessonOrder[ceilingIndex] ?? null;
+    const memberIds = group.members.map((m) => m.id);
+
+    const [progressRecords, settingsRecords] = await Promise.all([
+      ceilingLesson && memberIds.length
+        ? this.progressRepo.find({
+            where: { lessonId: ceilingLesson.id, userId: In(memberIds), status: LessonProgressStatus.completed },
+          })
+        : Promise.resolve([] as LessonProgress[]),
+      memberIds.length
+        ? this.settingsRepo.find({ where: { groupId, userId: In(memberIds) } })
+        : Promise.resolve([] as GroupMemberSettings[]),
+    ]);
+
+    const completedUserIds = new Set(progressRecords.map((p) => p.userId));
+    const settingsByUser = new Map(settingsRecords.map((s) => [s.userId, s]));
+
+    const completed: Array<{ studentId: string; firstName: string | null; lastName: string | null; isFree: boolean; manualUnlockCeiling: number | null }> = [];
+    const notCompleted: typeof completed = [];
+
+    for (const member of group.members) {
+      const settings = settingsByUser.get(member.id);
+      const entry = {
+        studentId: member.id,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        isFree: settings?.isFree ?? false,
+        manualUnlockCeiling: settings?.manualUnlockCeiling ?? null,
+      };
+      (completedUserIds.has(member.id) ? completed : notCompleted).push(entry);
+    }
+
+    return {
+      groupId: group.id,
+      ceilingIndex,
+      ceilingLessonId: ceilingLesson?.id ?? null,
+      ceilingLessonTitle: ceilingLesson?.lessonName ?? null,
+      completed,
+      notCompleted,
+    };
+  }
+
+  async setStudentFree(groupId: string, studentId: string, dto: SetStudentFreeDto, userId: string, role: string) {
+    const group = await this.groupRepo.findOne({ where: { id: groupId }, relations: ['members'] });
+    if (!group) throw new NotFoundException('Group not found');
+    if (role === Role.teacher && group.teacherId !== userId) throw new ForbiddenException('Access denied');
+    if (!group.members.some((m) => m.id === studentId)) {
+      throw new NotFoundException("Bu o'quvchi guruh a'zosi emas");
+    }
+
+    let settings = await this.settingsRepo.findOne({ where: { groupId, userId: studentId } });
+    if (!settings) settings = this.settingsRepo.create({ groupId, userId: studentId });
+    settings.isFree = dto.isFree;
+    await this.settingsRepo.save(settings);
+
+    return { studentId, isFree: settings.isFree };
+  }
+
+  async unlockNextForStudents(groupId: string, dto: UnlockNextDto, userId: string, role: string) {
+    const group = await this.groupRepo.findOne({ where: { id: groupId }, relations: ['members'] });
+    if (!group) throw new NotFoundException('Group not found');
+    if (role === Role.teacher && group.teacherId !== userId) throw new ForbiddenException('Access denied');
+
+    const memberIds = new Set(group.members.map((m) => m.id));
+    const targetIds = dto.studentIds.filter((id) => memberIds.has(id));
+    const groupCeiling = await this.lessonGatingService.getGroupCeilingIndex(group);
+    const targetCeiling = groupCeiling + 1;
+
+    for (const studentId of targetIds) {
+      let settings = await this.settingsRepo.findOne({ where: { groupId, userId: studentId } });
+      if (!settings) settings = this.settingsRepo.create({ groupId, userId: studentId });
+      settings.manualUnlockCeiling = Math.max(settings.manualUnlockCeiling ?? -1, targetCeiling);
+      await this.settingsRepo.save(settings);
+    }
+
+    return { unlocked: targetIds.length };
   }
 
   private async notifyStudents(studentIds: string[], groupId: string, groupName: string) {

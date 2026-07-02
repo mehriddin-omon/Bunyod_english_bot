@@ -9,6 +9,9 @@ import { ListeningContent } from 'src/common/core/entitys/listening-content.enti
 import { ListeningTranscript } from 'src/common/core/entitys/listening-transcript.entity';
 import { ListeningQuestion } from 'src/common/core/entitys/listening-question.entity';
 import { ListeningOption } from 'src/common/core/entitys/listening-option.entity';
+import { QuizContent } from 'src/common/core/entitys/quiz-content.entity';
+import { QuizExercise } from 'src/common/core/entitys/quiz-exercise.entity';
+import { QuizItem } from 'src/common/core/entitys/quiz-item.entity';
 import { TeacherLessonsService } from './teacher-lessons.service';
 import { QuestionType } from 'src/common/utils/enum';
 
@@ -50,6 +53,15 @@ export class BlocksService {
     @InjectRepository(ListeningOption)
     private readonly listeningOptRepo: Repository<ListeningOption>,
 
+    @InjectRepository(QuizContent)
+    private readonly quizRepo: Repository<QuizContent>,
+
+    @InjectRepository(QuizExercise)
+    private readonly quizExerciseRepo: Repository<QuizExercise>,
+
+    @InjectRepository(QuizItem)
+    private readonly quizItemRepo: Repository<QuizItem>,
+
     private readonly lessonsSvc: TeacherLessonsService,
   ) {}
 
@@ -57,10 +69,11 @@ export class BlocksService {
 
   async getBlocks(lessonId: string) {
     await this.lessonsSvc.verifyLesson(lessonId);
-    const [grammar, reading, listening] = await Promise.all([
+    const [grammar, reading, listening, quiz] = await Promise.all([
       this.grammarRepo.find({ where: { lessonId }, order: { createdAt: 'ASC' } }),
       this.readingRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } }),
       this.listeningRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } }),
+      this.quizRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' }, relations: ['exercises', 'exercises.items'] }),
     ]);
     return [
       ...grammar.map((g) => ({ id: g.id, type: 'grammar', grammarPage: g.pageName })),
@@ -81,6 +94,16 @@ export class BlocksService {
           duration: l.durationSeconds,
           trackCode: l.trackCode,
           speakers: l.speakers,
+        },
+      })),
+      ...quiz.map((q) => ({
+        id: q.id,
+        type: 'quiz',
+        order: q.orderIndex,
+        quiz: {
+          title: q.title,
+          exerciseCount: q.exercises?.length ?? 0,
+          itemCount: q.exercises?.reduce((sum, e) => sum + (e.items?.length ?? 0), 0) ?? 0,
         },
       })),
     ];
@@ -112,6 +135,14 @@ export class BlocksService {
       return { id: l.id, type: 'listening', title: l.title, fileId: l.fileId, orderIndex: l.orderIndex };
     }
 
+    if (dto.type === 'quiz') {
+      const count = await this.quizRepo.count({ where: { lessonId } });
+      const q = await this.quizRepo.save(
+        this.quizRepo.create({ lessonId, title: 'Quiz', orderIndex: count }),
+      );
+      return { id: q.id, type: 'quiz', order: q.orderIndex, quiz: { title: q.title, exerciseCount: 0, itemCount: 0 } };
+    }
+
     throw new NotFoundException("Noto'g'ri blok turi");
   }
 
@@ -127,6 +158,9 @@ export class BlocksService {
     const listening = await this.listeningRepo.findOne({ where: { id: blockId, lessonId } });
     if (listening) { await this.listeningRepo.remove(listening); return { message: "O'chirildi" }; }
 
+    const quiz = await this.quizRepo.findOne({ where: { id: blockId, lessonId } });
+    if (quiz) { await this.quizRepo.remove(quiz); return { message: "O'chirildi" }; }
+
     throw new NotFoundException('Blok topilmadi');
   }
 
@@ -136,6 +170,7 @@ export class BlocksService {
       blockIds.map(async (id, idx) => {
         await this.readingRepo.update({ id, lessonId }, { orderIndex: idx }).catch(() => {});
         await this.listeningRepo.update({ id, lessonId }, { orderIndex: idx }).catch(() => {});
+        await this.quizRepo.update({ id, lessonId }, { orderIndex: idx }).catch(() => {});
       }),
     );
     return { message: 'Tartib saqlandi' };
@@ -420,4 +455,157 @@ export class BlocksService {
     );
     return { id: opt.id, text: opt.optionText, imageUrl: opt.imageUrl, matchKey: opt.matchKey, isCorrect: opt.isCorrect, orderIndex: opt.orderIndex };
   }
+
+  // ─── Quiz ─────────────────────────────────────────────────────
+
+  private mapExercise(e: QuizExercise) {
+    return {
+      id: e.id,
+      title: e.title,
+      instructions: e.instructions,
+      exerciseType: e.exerciseType,
+      orderIndex: e.orderIndex,
+      items: (e.items ?? [])
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map((i) => ({
+          id: i.id,
+          itemText: i.itemText,
+          correctAnswer: i.correctAnswer,
+          options: i.options ? JSON.parse(i.options) : null,
+          orderIndex: i.orderIndex,
+        })),
+    };
+  }
+
+  async getQuiz(lessonId: string, blockId: string) {
+    await this.lessonsSvc.verifyLesson(lessonId);
+    const quiz = await this.quizRepo.findOne({
+      where: { id: blockId, lessonId },
+      relations: ['exercises', 'exercises.items'],
+    });
+    if (!quiz) throw new NotFoundException('Quiz blok topilmadi');
+    return {
+      id: quiz.id,
+      title: quiz.title,
+      exercises: (quiz.exercises ?? [])
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map((e) => this.mapExercise(e)),
+    };
+  }
+
+  async saveQuiz(lessonId: string, blockId: string, dto: { title?: string }) {
+    await this.lessonsSvc.verifyLesson(lessonId);
+    const quiz = await this.quizRepo.findOne({ where: { id: blockId, lessonId } });
+    if (!quiz) throw new NotFoundException('Quiz blok topilmadi');
+    if (dto.title !== undefined) quiz.title = dto.title;
+    const saved = await this.quizRepo.save(quiz);
+    return { id: saved.id, title: saved.title };
+  }
+
+  async addExercise(lessonId: string, blockId: string, dto: { title?: string; instructions?: string; exerciseType: string }) {
+    await this.lessonsSvc.verifyLesson(lessonId);
+    const quiz = await this.quizRepo.findOne({ where: { id: blockId, lessonId } });
+    if (!quiz) throw new NotFoundException('Quiz blok topilmadi');
+    const count = await this.quizExerciseRepo.count({ where: { quizId: quiz.id } });
+    const ex = await this.quizExerciseRepo.save(
+      this.quizExerciseRepo.create({
+        quizId: quiz.id,
+        title: dto.title ?? null,
+        instructions: dto.instructions ?? null,
+        exerciseType: dto.exerciseType,
+        orderIndex: count,
+      }),
+    );
+    return this.mapExercise({ ...ex, items: [] });
+  }
+
+  async updateExercise(lessonId: string, _blockId: string, exerciseId: string, dto: { title?: string; instructions?: string; exerciseType?: string }) {
+    await this.lessonsSvc.verifyLesson(lessonId);
+    const ex = await this.quizExerciseRepo.findOne({ where: { id: exerciseId }, relations: ['items'] });
+    if (!ex) throw new NotFoundException('Mashq topilmadi');
+    if (dto.title !== undefined) ex.title = dto.title;
+    if (dto.instructions !== undefined) ex.instructions = dto.instructions;
+    if (dto.exerciseType !== undefined) ex.exerciseType = dto.exerciseType;
+    await this.quizExerciseRepo.save(ex);
+    return this.mapExercise(ex);
+  }
+
+  async deleteExercise(lessonId: string, _blockId: string, exerciseId: string) {
+    await this.lessonsSvc.verifyLesson(lessonId);
+    const ex = await this.quizExerciseRepo.findOne({ where: { id: exerciseId } });
+    if (!ex) throw new NotFoundException('Mashq topilmadi');
+    await this.quizExerciseRepo.remove(ex);
+    return { message: "O'chirildi" };
+  }
+
+  async reorderExercises(lessonId: string, blockId: string, exerciseIds: string[]) {
+    await this.lessonsSvc.verifyLesson(lessonId);
+    const quiz = await this.quizRepo.findOne({ where: { id: blockId, lessonId } });
+    if (!quiz) throw new NotFoundException('Quiz blok topilmadi');
+    await Promise.all(
+      exerciseIds.map((id, idx) =>
+        this.quizExerciseRepo.update({ id, quizId: quiz.id }, { orderIndex: idx }).catch(() => {}),
+      ),
+    );
+    return { message: 'Tartib saqlandi' };
+  }
+
+  async addItem(lessonId: string, _blockId: string, exerciseId: string, dto: { itemText: string; correctAnswer: string; options?: string[] }) {
+    await this.lessonsSvc.verifyLesson(lessonId);
+    const ex = await this.quizExerciseRepo.findOne({ where: { id: exerciseId } });
+    if (!ex) throw new NotFoundException('Mashq topilmadi');
+    const count = await this.quizItemRepo.count({ where: { exerciseId } });
+    const item = await this.quizItemRepo.save(
+      this.quizItemRepo.create({
+        exerciseId,
+        itemText: dto.itemText,
+        correctAnswer: dto.correctAnswer,
+        options: dto.options ? JSON.stringify(dto.options) : null,
+        orderIndex: count,
+      }),
+    );
+    return {
+      id: item.id,
+      itemText: item.itemText,
+      correctAnswer: item.correctAnswer,
+      options: item.options ? JSON.parse(item.options) : null,
+      orderIndex: item.orderIndex,
+    };
+  }
+
+  async updateItem(lessonId: string, _blockId: string, _exerciseId: string, itemId: string, dto: { itemText?: string; correctAnswer?: string; options?: string[] | null }) {
+    await this.lessonsSvc.verifyLesson(lessonId);
+    const item = await this.quizItemRepo.findOne({ where: { id: itemId } });
+    if (!item) throw new NotFoundException('Element topilmadi');
+    if (dto.itemText !== undefined) item.itemText = dto.itemText;
+    if (dto.correctAnswer !== undefined) item.correctAnswer = dto.correctAnswer;
+    if (dto.options !== undefined) item.options = dto.options ? JSON.stringify(dto.options) : null;
+    await this.quizItemRepo.save(item);
+    return {
+      id: item.id,
+      itemText: item.itemText,
+      correctAnswer: item.correctAnswer,
+      options: item.options ? JSON.parse(item.options) : null,
+      orderIndex: item.orderIndex,
+    };
+  }
+
+  async deleteItem(lessonId: string, _blockId: string, _exerciseId: string, itemId: string) {
+    await this.lessonsSvc.verifyLesson(lessonId);
+    const item = await this.quizItemRepo.findOne({ where: { id: itemId } });
+    if (!item) throw new NotFoundException('Element topilmadi');
+    await this.quizItemRepo.remove(item);
+    return { message: "O'chirildi" };
+  }
+
+  async reorderItems(lessonId: string, _blockId: string, exerciseId: string, itemIds: string[]) {
+    await this.lessonsSvc.verifyLesson(lessonId);
+    await Promise.all(
+      itemIds.map((id, idx) =>
+        this.quizItemRepo.update({ id, exerciseId }, { orderIndex: idx }).catch(() => {}),
+      ),
+    );
+    return { message: 'Tartib saqlandi' };
+  }
+
 }

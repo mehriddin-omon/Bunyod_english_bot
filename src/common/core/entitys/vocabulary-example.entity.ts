@@ -1,15 +1,15 @@
 import { Column, Entity, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from './base.entity';
-import { Vocabulary } from './vocabulary.entity';
+import { VocabularyRelation } from './vocabulary-relation.entity';
 
 @Entity({ name: 'vocabulary_examples' })
 export class VocabularyExample extends BaseEntity {
-  @Column({ type: 'uuid', name: 'vocabulary_id' })
-  vocabularyId: string;
+  @Column({ type: 'uuid', name: 'pair_id' })
+  pairId: string;
 
-  @ManyToOne(() => Vocabulary, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'vocabulary_id' })
-  vocabulary: Vocabulary;
+  @ManyToOne(() => VocabularyRelation, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'pair_id' })
+  pair: VocabularyRelation;
 
   @Column({ type: 'text', name: 'english_text' })
   englishText: string;
