@@ -1,7 +1,146 @@
 // ============================================================
 // Linguara — To'liq ma'lumotlar bazasi sxemasi (DBML)
-// Versiya: 2.0
+// Versiya: 2.1 (to'ldirilmoqda — enum + delete qoidalari)
 // ============================================================
+
+// ─── ENUM TIPLARI (manba: src/common/utils/enum.ts) ──────────
+// Bo'limlar to'ldirilgan sari bu ro'yxat o'sib boradi.
+Enum language {
+  en
+  uz
+}
+Enum part_of_speech {
+  noun
+  verb
+  adjective
+  adverb
+  phrase
+}
+Enum word_relation_type {
+  synonym
+  antonym
+}
+Enum question_type {
+  multiple_choice
+  fill_in_blank
+  true_false
+  matching
+}
+Enum exercise_type {
+  matching
+  fill_in_blank
+  multiple_choice
+}
+Enum vocab_status {
+  new
+  learning
+  mastered
+}
+Enum cefr_level {
+  A1
+  A2
+  B1
+  B2
+  C1
+  C2
+}
+Enum practice_mode {
+  flashcard
+  multiple_choice
+  typing
+  audio
+}
+Enum group_status {
+  active
+  inactive
+  archived
+}
+Enum session_status {
+  scheduled
+  ongoing
+  completed
+  cancelled
+}
+Enum attendance_status {
+  present
+  absent
+  late
+  excused
+}
+Enum league {
+  bronze
+  silver
+  gold
+  platinum
+  diamond
+}
+Enum xp_source {
+  lesson_complete
+  vocabulary_mastered
+  streak_bonus
+  challenge_bonus
+  assignment_bonus
+}
+Enum achievement_condition {
+  streak
+  lessons
+  vocabulary
+  score
+  attendance
+}
+Enum activity_type {
+  lesson
+  vocabulary
+  listening
+  reading
+  test
+}
+Enum assignment_type {
+  reading
+  listening
+  writing
+  speaking
+  grammar
+  vocabulary
+  test
+}
+Enum assignment_status {
+  draft
+  active
+  closed
+}
+Enum submission_status {
+  pending
+  submitted
+  graded
+  late
+  revision_needed
+}
+Enum notification_type {
+  message
+  lesson_unlocked
+  achievement
+  assignment
+  reminder
+  system
+}
+Enum role {
+  superAdmin
+  admin
+  teacher
+  subTeacher
+  student
+}
+Enum lesson_status {
+  draft
+  published
+  archived
+}
+Enum lesson_progress_status {
+  not_started
+  in_progress
+  completed
+}
 
 // ─── FOYDALANUVCHILAR ────────────────────────────────────────
 //✅
@@ -16,7 +155,7 @@ Table users {
   telegram_id       bigint  [unique]
   telegram_username varchar
   avatar_url        varchar
-  role              varchar [not null, default: 'student', note: 'superAdmin|admin|teacher|subTeacher|student']
+  role              role    [not null, default: 'student']
   created_by        uuid    [ref: > users.id, note: 'Teacher yoki Admin yaratgan']
   refresh_token     text
   created_at        timestamptz [default: `now()`]
@@ -35,8 +174,16 @@ Table student_profiles {
   user_id       uuid    [unique, ref: > users.id]
   birth_date    date
   address       text
-  cefr_level    varchar [note: 'A1|A2|B1|B2|C1|C2']
+  cefr_level    cefr_level [note: 'Umumiy CEFR daraja']
   learning_goal varchar
+  // ↓ user_skills'dan birlashtirildi — umumiy skill ballari (0–100)
+  grammar_score          int [not null, default: 0]
+  reading_score          int [not null, default: 0]
+  listening_score        int [not null, default: 0]
+  speaking_score         int [not null, default: 0]
+  writing_score          int [not null, default: 0]
+  vocabulary_score       int [not null, default: 0]
+  vocabulary_words_count int [not null, default: 0, note: 'O‘zlashtirilgan so‘zlar soni']
 
   indexes {
     user_id [unique]
@@ -62,7 +209,7 @@ Table units {
   number      int    [not null, note: '1–6']
   title       varchar [not null]
   description text
-  status      varchar [not null, default: 'draft', note: 'draft|published|archived']
+  status      lesson_status [not null, default: 'draft']
   created_at  timestamptz [default: `now()`]
   updated_at  timestamptz [default: `now()`]
 
@@ -77,7 +224,7 @@ Table lessons {
   lesson_number   varchar [note: '"3.09", "3.10" kabi']
   lesson_name     varchar [not null]
   order_index     int     [not null, default: 0, note: 'Unit ichidagi tartib']
-  status          varchar [not null, default: 'draft', note: 'draft|published|archived']
+  status          lesson_status [not null, default: 'draft']
   created_at      timestamptz [default: `now()`]
   updated_at      timestamptz [default: `now()`]
 
@@ -91,11 +238,14 @@ Table lessons {
 // ─── GRAMMATIKA ───────────────────────────────────────────────
 //✅
 Table grammar_contents {
-  id          uuid   [pk, default: `gen_random_uuid()`]
-  lesson_id   uuid   [ref: > lessons.id]
-  page_name   varchar [not null]
-  created_at  timestamptz [default: `now()`]
-  updated_at  timestamptz [default: `now()`]
+  id            uuid    [pk, default: `gen_random_uuid()`]
+  lesson_id     uuid    [ref: > lessons.id, note: 'ON DELETE CASCADE']
+  component_key varchar [note: 'Frontend grammatika komponenti kaliti (masalan "lesson1") — DB kontenti bo‘lmasa']
+  title         varchar [note: 'Grammatika mavzusi sarlavhasi']
+  content       jsonb   [note: 'DB-driven kontent: qoidalar, formulalar, misollar (ixtiyoriy)']
+  order_index   int     [not null, default: 0]
+  created_at    timestamptz [default: `now()`]
+  updated_at    timestamptz [default: `now()`]
 
   indexes { lesson_id }
 }
@@ -120,7 +270,7 @@ Table reading_questions {
   id                  uuid   [pk, default: `gen_random_uuid()`]
   reading_id          uuid   [ref: > reading_contents.id]
   question_text       text   [not null]
-  question_type       varchar [not null, note: 'multiple_choice|fill_in_blank|true_false']
+  question_type       question_type [not null]
   correct_explanation text
   order_index         int    [default: 0]
 
@@ -143,7 +293,7 @@ Table listening_contents {
   id               uuid   [pk, default: `gen_random_uuid()`]
   lesson_id        uuid   [ref: > lessons.id]
   title            varchar [not null]
-  file_id          varchar [not null, note: 'Telegram file_id yoki storage path']
+  audio_url        varchar [not null, note: 'Listening audio (/uploads/audio/...)']
   image_url        varchar [note: 'Butun mashq uchun rasm (jadval, forma, sahna)']
   duration_seconds int
   order_index      int    [default: 0]
@@ -168,10 +318,10 @@ Table listening_questions {
   id                  uuid   [pk, default: `gen_random_uuid()`]
   listening_id        uuid   [ref: > listening_contents.id]
   question_text       text   [not null]
-  question_type       varchar [not null, note: 'multiple_choice|fill_in_blank|matching']
+  question_type       question_type [not null]
   correct_explanation text
   image_url           varchar [note: 'Savol rasmi: sahna, forma yoki jadval']
-  match_targets       text    [note: 'JSON array: matching o\'ng tomoni ["Jane","Anna","Pat"]']
+  match_targets       jsonb   [note: 'matching o\'ng tomoni: ["Jane","Anna","Pat"] (DBda migratsiyada jsonb)']
   order_index         int    [default: 0]
 
   indexes { listening_id }
@@ -190,45 +340,45 @@ Table listening_options {
 }
 
 // ─── LUG'AT ──────────────────────────────────────────────────
-
+//✅
 Table vocabularys {
-  id              uuid   [pk, default: `gen_random_uuid()`]
-  word            varchar [not null]
-  lang            varchar [not null, default: 'en', note: 'en|uz|ru']
-  ipa             varchar [note: 'Talaffuz: /ˈmem.ə.rə.bəl/']
-  pos             varchar [note: 'noun|verb|adjective|adverb|phrase']
-  lesson_id       uuid    [ref: > lessons.id]
-  voice_file_id   varchar [note: 'Google TTS orqali yaratilgan audio fayl yo\'li']
-  image_url       varchar
-  order_index     bigint  [default: 0]
-  created_at      timestamptz [default: `now()`]
-  updated_at      timestamptz [default: `now()`]
+  id            uuid           [pk, default: `gen_random_uuid()`]
+  word          varchar        [not null]
+  lang          language       [not null, default: 'en']
+  ipa           varchar        [note: 'Talaffuz: /ˈmem.ə.rə.bəl/']
+  pos           part_of_speech
+  lesson_id     uuid           [ref: > lessons.id, note: 'ON DELETE SET NULL — dars o‘chsa so‘z qoladi']
+  voice_url     varchar        [note: 'Google TTS talaffuz audio (/uploads/audio/...)']
+  image_url     varchar
+  order_index   bigint         [not null, default: 0]
+  created_at    timestamptz    [default: `now()`]
+  updated_at    timestamptz    [default: `now()`]
 
   indexes {
-    (word, lang) [unique]
     lesson_id
   }
 }
-
+//✅
 Table vocabulary_relations {
-  id              uuid   [pk, default: `gen_random_uuid()`]
-  vocabulary_id   uuid   [ref: > vocabularys.id]
-  translation_id  uuid   [ref: > vocabularys.id]
-  attempts        bigint [not null, default: 0]
-  wrong_attempts  bigint [not null, default: 0]
-  difficulty      float  [not null, default: 0]
-  created_at      timestamptz [default: `now()`]
-  updated_at      timestamptz [default: `now()`]
+  id             uuid        [pk, default: `gen_random_uuid()`]
+  vocabulary_id  uuid        [not null, ref: > vocabularys.id, note: 'ON DELETE CASCADE']
+  translation_id uuid        [not null, ref: > vocabularys.id, note: 'ON DELETE CASCADE']
+  attempts       bigint      [not null, default: 0]
+  wrong_attempts bigint      [not null, default: 0]
+  difficulty     float       [not null, default: 0]
+  created_at     timestamptz [default: `now()`]
+  updated_at     timestamptz [default: `now()`]
+  // ikki yo'nalishli juftlik — unique qo'yilmadi
 
   indexes {
     vocabulary_id
     translation_id
   }
 }
-
+//✅
 Table vocabulary_sessions {
   id              uuid        [pk, default: `gen_random_uuid()`]
-  user_id         uuid        [ref: > users.id, not null]
+  user_id         uuid        [not null, ref: > users.id, note: 'ON DELETE CASCADE']
   completed_count int         [not null, default: 0]
   time_spent_sec  int         [not null, default: 0]
   created_at      timestamptz [default: `now()`]
@@ -236,36 +386,29 @@ Table vocabulary_sessions {
 
   indexes {
     (user_id, created_at)
-    user_id
   }
 }
-
+//✅
 Table vocabulary_examples {
-  id             uuid   [pk, default: `gen_random_uuid()`]
-  pair_id        uuid   [ref: > vocabulary_relations.id]
-  english_text   text   [not null]
+  id             uuid        [pk, default: `gen_random_uuid()`]
+  pair_id        uuid        [not null, ref: > vocabulary_relations.id, note: 'ON DELETE CASCADE']
+  english_text   text        [not null]
   uzbek_text     text
   highlight_word varchar
-  order_index    int    [default: 0]
+  order_index    int         [default: 0]
+  created_at     timestamptz [default: `now()`]
+  updated_at     timestamptz [default: `now()`]
 
   indexes { pair_id }
 }
-
-Table vocabulary_synonyms {
-  vocabulary_id uuid [ref: > vocabularys.id]
-  synonym_id    uuid [ref: > vocabularys.id]
-
-  indexes {
-    (vocabulary_id, synonym_id) [pk]
-  }
-}
-
-Table vocabulary_antonyms {
-  vocabulary_id uuid [ref: > vocabularys.id]
-  antonym_id    uuid [ref: > vocabularys.id]
+// synonyms + antonyms birlashtirildi (relation_type bilan)
+Table vocabulary_word_relations {
+  vocabulary_id uuid               [not null, ref: > vocabularys.id, note: 'ON DELETE CASCADE']
+  related_id    uuid               [not null, ref: > vocabularys.id, note: 'ON DELETE CASCADE']
+  relation_type word_relation_type [not null, note: 'synonym | antonym']
 
   indexes {
-    (vocabulary_id, antonym_id) [pk]
+    (vocabulary_id, related_id, relation_type) [pk]
   }
 }
 
@@ -273,10 +416,10 @@ Table vocabulary_antonyms {
 // ─── QUIZ (GRAMMATIKA MUSTAHKAMLASH) ─────────────────────────
 
 Table quiz_contents {
-  id          uuid    [pk, default: `gen_random_uuid()`]
-  lesson_id   uuid    [ref: > lessons.id]
-  title       varchar [not null, default: 'Quiz']
-  order_index int     [default: 0]
+  id          uuid        [pk, default: `gen_random_uuid()`]
+  lesson_id   uuid        [not null, ref: > lessons.id, note: 'ON DELETE CASCADE']
+  title       varchar     [not null, default: 'Quiz']
+  order_index int         [default: 0]
   created_at  timestamptz [default: `now()`]
   updated_at  timestamptz [default: `now()`]
 
@@ -284,25 +427,25 @@ Table quiz_contents {
 }
 
 Table quiz_exercises {
-  id            uuid    [pk, default: `gen_random_uuid()`]
-  quiz_id       uuid    [ref: > quiz_contents.id]
-  title         varchar [note: 'Exercise 1, Exercise 2...']
-  instructions  text    [note: 'Match "Personal pronouns" — kishilik olmoshlarini moslashtiring']
-  exercise_type varchar [not null, note: 'matching|fill_in_blank|multiple_choice']
-  order_index   int     [default: 0]
-  created_at    timestamptz [default: `now()`]
-  updated_at    timestamptz [default: `now()`]
+  id            uuid          [pk, default: `gen_random_uuid()`]
+  quiz_id       uuid          [not null, ref: > quiz_contents.id, note: 'ON DELETE CASCADE']
+  title         varchar       [note: 'Exercise 1, Exercise 2...']
+  instructions  text          [note: 'Match "Personal pronouns" — kishilik olmoshlari']
+  exercise_type exercise_type [not null]
+  order_index   int           [default: 0]
+  created_at    timestamptz   [default: `now()`]
+  updated_at    timestamptz   [default: `now()`]
 
   indexes { quiz_id }
 }
 
 Table quiz_items {
-  id             uuid    [pk, default: `gen_random_uuid()`]
-  exercise_id    uuid    [ref: > quiz_exercises.id]
-  item_text      text    [not null, note: 'Sophie | Ali ____ a student']
-  correct_answer varchar [not null, note: 'she | is']
-  options        text    [note: 'JSON: faqat multiple_choice uchun ["am","is","are"]']
-  order_index    int     [default: 0]
+  id             uuid        [pk, default: `gen_random_uuid()`]
+  exercise_id    uuid        [not null, ref: > quiz_exercises.id, note: 'ON DELETE CASCADE']
+  item_text      text        [not null, note: 'Sophie | Ali ____ a student']
+  correct_answer varchar     [not null, note: 'she | is']
+  options        jsonb       [note: 'Faqat multiple_choice uchun: ["am","is","are"]']
+  order_index    int         [default: 0]
   created_at     timestamptz [default: `now()`]
   updated_at     timestamptz [default: `now()`]
 
@@ -310,43 +453,48 @@ Table quiz_items {
 }
 
 Table quiz_student_answers {
-  id           uuid    [pk, default: `gen_random_uuid()`]
-  user_id      uuid    [ref: > users.id]
-  item_id      uuid    [ref: > quiz_items.id]
-  quiz_id      uuid    [ref: > quiz_contents.id]
-  given_answer varchar [not null, note: 'O\'quvchi bergan javob']
-  is_correct   boolean [not null, default: false]
+  id           uuid        [pk, default: `gen_random_uuid()`]
+  user_id      uuid        [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  item_id      uuid        [not null, ref: > quiz_items.id, note: 'ON DELETE CASCADE']
+  quiz_id      uuid        [not null, ref: > quiz_contents.id, note: 'ON DELETE CASCADE']
+  given_answer varchar     [not null, note: 'O‘quvchi bergan javob']
+  is_correct   boolean     [not null, default: false]
   answered_at  timestamptz [default: `now()`]
+  created_at   timestamptz [default: `now()`]
+  updated_at   timestamptz [default: `now()`]
 
   indexes {
     (user_id, item_id) [unique]
-    user_id
     quiz_id
   }
 }
 
 // ─── TEST / AMALIYOT ─────────────────────────────────────────
+// ⚠️ REJALASHTIRILGAN: bu 2 jadval hali kodda (entity) YO'Q — hozir quiz_* ishlatilmoqda.
+//    Delete qoidalari taklif sifatida; kod yozilganda tasdiqlanadi.
 
 Table test_questions {
-  id                  uuid   [pk, default: `gen_random_uuid()`]
-  lesson_id           uuid   [ref: > lessons.id]
-  question_text       text   [not null]
-  question_type       varchar [not null, note: 'multiple_choice|fill_in_blank|true_false|matching']
-  media_file_id       varchar
-  time_limit_seconds  int
-  order_index         int    [default: 0]
-  created_at          timestamptz [default: `now()`]
-  updated_at          timestamptz [default: `now()`]
+  id                 uuid          [pk, default: `gen_random_uuid()`]
+  lesson_id          uuid          [not null, ref: > lessons.id, note: 'ON DELETE CASCADE']
+  question_text      text          [not null]
+  question_type      question_type [not null]
+  media_url          varchar        [note: 'Savol media fayli (/uploads/...)']
+  time_limit_seconds int
+  order_index        int           [default: 0]
+  created_at         timestamptz   [default: `now()`]
+  updated_at         timestamptz   [default: `now()`]
 
   indexes { lesson_id }
 }
 
 Table test_options {
-  id            uuid    [pk, default: `gen_random_uuid()`]
-  question_id   uuid    [ref: > test_questions.id]
-  option_text   text    [not null]
-  is_correct    boolean [not null, default: false]
-  order_index   int     [default: 0]
+  id          uuid        [pk, default: `gen_random_uuid()`]
+  question_id uuid        [not null, ref: > test_questions.id, note: 'ON DELETE CASCADE']
+  option_text text        [not null]
+  is_correct  boolean     [not null, default: false]
+  order_index int         [default: 0]
+  created_at  timestamptz [default: `now()`]
+  updated_at  timestamptz [default: `now()`]
 
   indexes { question_id }
 }
@@ -357,7 +505,7 @@ Table lesson_progress {
   id               uuid   [pk, default: `gen_random_uuid()`]
   user_id          uuid   [ref: > users.id]
   lesson_id        uuid   [ref: > lessons.id]
-  status           varchar [not null, default: 'not_started']
+  status           lesson_progress_status [not null, default: 'not_started']
   score            int    [note: 'Jami ball 0–100']
   grammar_score    int    [note: '0–100, null = bu darsda yo\'q']
   quiz_score       int    [note: '0–100, null = quiz bloki yo\'q']
@@ -380,70 +528,58 @@ Table lesson_progress {
 }
 
 Table user_vocabulary_progress {
-  id               uuid   [pk, default: `gen_random_uuid()`]
-  user_id          uuid   [ref: > users.id]
-  pair_id          uuid   [ref: > vocabulary_relations.id]
-  status           varchar [not null, default: 'new', note: 'new|learning|mastered']
-  attempts         int    [not null, default: 0]
-  wrong_attempts   int    [not null, default: 0]
-  next_review_at   timestamptz
-  created_at       timestamptz [default: `now()`]
-  updated_at       timestamptz [default: `now()`]
+  id             uuid         [pk, default: `gen_random_uuid()`]
+  user_id        uuid         [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  pair_id        uuid         [not null, ref: > vocabulary_relations.id, note: 'ON DELETE CASCADE']
+  status         vocab_status [not null, default: 'new']
+  attempts       int          [not null, default: 0]
+  wrong_attempts int          [not null, default: 0]
+  next_review_at timestamptz  [note: 'SRS: keyingi takror vaqti']
+  created_at     timestamptz  [default: `now()`]
+  updated_at     timestamptz  [default: `now()`]
 
   indexes {
     (user_id, pair_id) [unique]
-    user_id
     next_review_at
     status
   }
 }
 
+// ⚠️ KOD-SYNC KERAK: entity hozir session_id + smallint mode + vaqtsiz.
+//    Bu maqsad holat: user_id + enum mode + answered_at + timestamp (entity qayta yoziladi).
 Table vocabulary_practice_logs {
-  id          uuid        [pk, default: `gen_random_uuid()`]
-  user_id     uuid        [ref: > users.id, not null]
-  pair_id     uuid        [ref: > vocabulary_relations.id, not null]
-  mode        varchar     [not null, note: 'flashcard|multiple_choice|typing|audio']
-  correct     boolean     [not null]
-  answered_at timestamptz [default: `now()`]
-  created_at  timestamptz [default: `now()`]
-  updated_at  timestamptz [default: `now()`]
+  id          uuid          [pk, default: `gen_random_uuid()`]
+  user_id     uuid          [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  pair_id     uuid          [not null, ref: > vocabulary_relations.id, note: 'ON DELETE CASCADE']
+  mode        practice_mode [not null]
+  correct     boolean       [not null]
+  answered_at timestamptz   [default: `now()`]
+  created_at  timestamptz   [default: `now()`]
+  updated_at  timestamptz   [default: `now()`]
 
   indexes {
     (user_id, answered_at)
     (user_id, pair_id)
-    user_id
   }
 }
 
-Table user_skills {
-  id          uuid   [pk, default: `gen_random_uuid()`]
-  user_id     uuid   [ref: > users.id]
-  skill       varchar [not null, note: 'grammar|reading|listening|speaking|writing|vocabulary']
-  cefr_level  varchar [not null, default: 'A1', note: 'A1|A2|B1|B2|C1|C2']
-  score       int    [not null, default: 0, note: '0–100']
-  words_count int    [note: 'Faqat vocabulary uchun']
-  created_at  timestamptz [default: `now()`]
-  updated_at  timestamptz [default: `now()`]
-
-  indexes {
-    (user_id, skill) [unique]
-    user_id
-  }
-}
+// user_skills OLIB TASHLANDI — ballar student_profiles'ga ustun sifatida ko'chirildi.
 
 
 // ─── GURUHLAR ────────────────────────────────────────────────
 
 Table groups {
-  id          uuid   [pk, default: `gen_random_uuid()`]
-  name        varchar [not null]
-  description text
-  color       varchar [note: 'blue|emerald|amber|zinc']
-  teacher_id  uuid   [ref: > users.id]
-  created_by  uuid   [ref: > users.id]
-  status      varchar [not null, default: 'active', note: 'active|inactive|archived']
-  created_at  timestamptz [default: `now()`]
-  updated_at  timestamptz [default: `now()`]
+  id                    uuid         [pk, default: `gen_random_uuid()`]
+  name                  varchar      [not null]
+  description           text
+  color                 varchar      [note: 'UI rang: blue|emerald|amber|zinc']
+  teacher_id            uuid         [ref: > users.id, note: 'ON DELETE SET NULL']
+  created_by            uuid         [not null, ref: > users.id, note: 'Kodda hozir FK bog‘lanish yo‘q — faqat ustun']
+  status                group_status [not null, default: 'active']
+  auto_advance_enabled  boolean      [not null, default: true, note: 'Gating: keyingi darsga avtomatik o‘tish']
+  manual_lesson_ceiling int          [note: 'Gating: qo‘lda yuqori chegara (null = cheksiz)']
+  created_at            timestamptz  [default: `now()`]
+  updated_at            timestamptz  [default: `now()`]
 
   indexes {
     teacher_id
@@ -452,9 +588,9 @@ Table groups {
 }
 
 Table group_members {
-  group_id  uuid [ref: > groups.id]
-  user_id   uuid [ref: > users.id]
-  joined_at timestamptz [default: `now()`]
+  group_id  uuid        [ref: > groups.id, note: 'ON DELETE CASCADE']
+  user_id   uuid        [ref: > users.id, note: 'ON DELETE CASCADE']
+  joined_at timestamptz [default: `now()`, note: 'Maqsad holat — kodda M2M ni join-entity ga aylantirish kerak']
 
   indexes {
     (group_id, user_id) [pk]
@@ -462,27 +598,35 @@ Table group_members {
   }
 }
 
-Table group_lessons {
-  group_id  uuid [ref: > groups.id]
-  lesson_id uuid [ref: > lessons.id]
+// group_member_settings — kodda BOR edi, DBMLga qo'shildi (gating: bepul / qo'lda chegara)
+Table group_member_settings {
+  id                    uuid        [pk, default: `gen_random_uuid()`]
+  group_id              uuid        [not null, ref: > groups.id, note: 'ON DELETE CASCADE']
+  user_id               uuid        [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  is_free               boolean     [not null, default: false, note: 'Bu a‘zoga chegarasiz (bepul) kirish']
+  manual_unlock_ceiling int         [note: 'Shu a‘zo uchun qo‘lda ochilgan chegara']
+  created_at            timestamptz [default: `now()`]
+  updated_at            timestamptz [default: `now()`]
 
   indexes {
-    (group_id, lesson_id) [pk]
+    (group_id, user_id) [unique]
   }
 }
+
+// group_lessons OLIB TASHLANDI — gating manual_lesson_ceiling + group_member_settings bilan ishlaydi.
 
 // ─── JADVAL ──────────────────────────────────────────────────
 
 Table schedules {
-  id               uuid   [pk, default: `gen_random_uuid()`]
-  group_id         uuid   [ref: > groups.id]
-  teacher_id       uuid   [ref: > users.id]
+  id               uuid        [pk, default: `gen_random_uuid()`]
+  group_id         uuid        [not null, ref: > groups.id, note: 'ON DELETE CASCADE']
+  teacher_id       uuid        [not null, ref: > users.id, note: 'ON DELETE CASCADE']
   topic            varchar
-  days_of_week     varchar [not null, note: 'JSON array: [0,2,4] — Du,Ch,Ju']
-  start_time       time   [not null]
-  duration_minutes int    [not null, default: 90]
-  is_recurring     boolean [not null, default: true]
-  valid_from       date   [not null]
+  days_of_week     jsonb       [not null, note: 'Massiv: [0,2,4] — Du,Ch,Ju (kodda hozir varchar → jsonb sync kerak)']
+  start_time       time        [not null]
+  duration_minutes int         [not null, default: 90]
+  is_recurring     boolean     [not null, default: true]
+  valid_from       date        [not null]
   valid_until      date
   created_at       timestamptz [default: `now()`]
   updated_at       timestamptz [default: `now()`]
@@ -494,33 +638,33 @@ Table schedules {
 }
 
 Table schedule_sessions {
-  id               uuid   [pk, default: `gen_random_uuid()`]
-  schedule_id      uuid   [ref: > schedules.id]
-  group_id         uuid   [ref: > groups.id]
-  teacher_id       uuid   [ref: > users.id]
-  session_date     date   [not null]
-  start_time       time   [not null]
-  duration_minutes int    [not null, default: 90]
+  id               uuid           [pk, default: `gen_random_uuid()`]
+  schedule_id      uuid           [not null, ref: > schedules.id, note: 'ON DELETE CASCADE']
+  group_id         uuid           [not null, ref: > groups.id, note: 'ON DELETE CASCADE']
+  teacher_id       uuid           [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  session_date     date           [not null]
+  start_time       time           [not null]
+  duration_minutes int            [not null, default: 90]
   topic            varchar
-  status           varchar [not null, default: 'scheduled', note: 'scheduled|ongoing|completed|cancelled']
+  status           session_status [not null, default: 'scheduled']
   notes            text
-  created_at       timestamptz [default: `now()`]
-  updated_at       timestamptz [default: `now()`]
+  created_at       timestamptz    [default: `now()`]
+  updated_at       timestamptz    [default: `now()`]
 
   indexes {
     schedule_id
-    group_id
-    session_date
+    (group_id, session_date)
   }
 }
 
 Table attendance {
-  id          uuid   [pk, default: `gen_random_uuid()`]
-  session_id  uuid   [ref: > schedule_sessions.id]
-  user_id     uuid   [ref: > users.id]
-  status      varchar [not null, note: 'present|absent|late|excused']
-  joined_at   timestamptz
-  created_at  timestamptz [default: `now()`]
+  id         uuid              [pk, default: `gen_random_uuid()`]
+  session_id uuid              [not null, ref: > schedule_sessions.id, note: 'ON DELETE CASCADE']
+  user_id    uuid              [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  status     attendance_status [not null]
+  joined_at  timestamptz
+  created_at timestamptz       [default: `now()`]
+  updated_at timestamptz       [default: `now()`]
 
   indexes {
     (session_id, user_id) [unique]
@@ -531,18 +675,18 @@ Table attendance {
 // ─── GAMIFIKATSIYA ───────────────────────────────────────────
 
 Table user_gamification {
-  id               uuid   [pk, default: `gen_random_uuid()`]
-  user_id          uuid   [ref: > users.id, unique]
-  level            int    [not null, default: 1]
-  xp_total         int    [not null, default: 0]
-  xp_weekly        int    [not null, default: 0]
-  league           varchar [not null, default: 'bronze', note: 'bronze|silver|gold|platinum|diamond']
-  streak_current   int    [not null, default: 0]
-  streak_max       int    [not null, default: 0]
+  id                 uuid        [pk, default: `gen_random_uuid()`]
+  user_id            uuid        [not null, unique, ref: > users.id, note: 'ON DELETE CASCADE']
+  level              int         [not null, default: 1]
+  xp_total           int         [not null, default: 0]
+  xp_weekly          int         [not null, default: 0]
+  league             league      [not null, default: 'bronze']
+  streak_current     int         [not null, default: 0]
+  streak_max         int         [not null, default: 0]
   last_activity_date date
-  rank_weekly      int
-  created_at       timestamptz [default: `now()`]
-  updated_at       timestamptz [default: `now()`]
+  rank_weekly        int
+  created_at         timestamptz [default: `now()`]
+  updated_at         timestamptz [default: `now()`]
 
   indexes {
     user_id [unique]
@@ -552,30 +696,19 @@ Table user_gamification {
   }
 }
 
-Table xp_transactions {
-  id             uuid   [pk, default: `gen_random_uuid()`]
-  user_id        uuid   [ref: > users.id]
-  amount         int    [not null]
-  source         varchar [not null, note: 'lesson_complete|vocabulary_mastered|streak_bonus|challenge_bonus|assignment_bonus']
-  reference_id   uuid   [note: 'lesson_id yoki vocabulary_id']
-  created_at     timestamptz [default: `now()`]
-
-  indexes {
-    user_id
-    created_at
-  }
-}
+// xp_transactions OLIB TASHLANDI — XP endi activity_events.xp_earned + xp_source ustunlarida.
 
 Table achievements {
-  id               uuid   [pk, default: `gen_random_uuid()`]
-  code             varchar [unique, not null]
-  title            varchar [not null]
-  description      text
-  icon             varchar
-  xp_reward        int    [not null, default: 0]
-  condition_type   varchar [not null, note: 'streak|lessons|vocabulary|score|attendance']
-  condition_value  int    [not null]
-  created_at       timestamptz [default: `now()`]
+  id              uuid                  [pk, default: `gen_random_uuid()`]
+  code            varchar               [unique, not null]
+  title           varchar               [not null]
+  description     text
+  icon            varchar
+  xp_reward       int                   [not null, default: 0]
+  condition_type  achievement_condition [not null]
+  condition_value int                   [not null]
+  created_at      timestamptz           [default: `now()`]
+  updated_at      timestamptz           [default: `now()`]
 
   indexes {
     code [unique]
@@ -583,10 +716,12 @@ Table achievements {
 }
 
 Table user_achievements {
-  id              uuid [pk, default: `gen_random_uuid()`]
-  user_id         uuid [ref: > users.id]
-  achievement_id  uuid [ref: > achievements.id]
-  earned_at       timestamptz [default: `now()`]
+  id             uuid        [pk, default: `gen_random_uuid()`]
+  user_id        uuid        [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  achievement_id uuid        [not null, ref: > achievements.id, note: 'ON DELETE CASCADE']
+  earned_at      timestamptz [default: `now()`]
+  created_at     timestamptz [default: `now()`]
+  updated_at     timestamptz [default: `now()`]
 
   indexes {
     (user_id, achievement_id) [unique]
@@ -597,101 +732,105 @@ Table user_achievements {
 // ─── KUNLIK KUZATUV ──────────────────────────────────────────
 
 Table daily_tracking {
-  id                   uuid   [pk, default: `gen_random_uuid()`]
-  user_id              uuid   [ref: > users.id]
-  date                 date   [not null]
-  minutes_spent        int    [not null, default: 0]
-  lessons_completed    int    [not null, default: 0]
-  vocabulary_reviewed  int    [not null, default: 0]
-  listening_done       boolean [not null, default: false]
-  goal_minutes         int    [not null, default: 30]
-  created_at           timestamptz [default: `now()`]
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  user_id             uuid        [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  date                date        [not null]
+  minutes_spent       int         [not null, default: 0]
+  lessons_completed   int         [not null, default: 0]
+  vocabulary_reviewed int         [not null, default: 0]
+  listening_done      boolean     [not null, default: false]
+  goal_minutes        int         [not null, default: 30]
+  created_at          timestamptz [default: `now()`]
+  updated_at          timestamptz [default: `now()`]
 
   indexes {
     (user_id, date) [unique]
-    user_id
-    date
   }
 }
 
-Table activity_log {
-  id              uuid   [pk, default: `gen_random_uuid()`]
-  user_id         uuid   [ref: > users.id]
-  logged_at       timestamptz [not null, default: `now()`]
-  day_of_week     int    [not null, note: '0=Du, 6=Ya']
-  hour_of_day     int    [not null, note: '0–23']
-  duration_minutes int   [not null, default: 1]
-  activity_type   varchar [not null, note: 'lesson|vocabulary|listening|reading|test']
+// activity_log + xp_transactions birlashtirildi → umumiy faoliyat oqimi.
+// day_of_week/hour_of_day olib tashlandi (occurred_at'dan hisoblanadi).
+Table activity_events {
+  id            uuid          [pk, default: `gen_random_uuid()`]
+  user_id       uuid          [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  activity_type activity_type [note: 'Bajarilgan faoliyat (sof XP bonus bo‘lsa null)']
+  occurred_at   timestamptz   [not null, default: `now()`]
+  duration_sec  int           [not null, default: 0]
+  xp_earned     int           [not null, default: 0, note: 'Shu hodisada berilgan XP']
+  xp_source     xp_source     [note: 'XP sababi (xp_earned>0 bo‘lganda)']
+  reference_id  uuid          [note: 'Polimorf: lesson_id / vocabulary_id (FK yo‘q)']
+  meta          jsonb         [note: 'Qo‘shimcha kontekst']
+  created_at    timestamptz   [default: `now()`]
+  updated_at    timestamptz   [default: `now()`]
 
   indexes {
-    user_id
-    (user_id, day_of_week, hour_of_day)
-    logged_at
+    (user_id, occurred_at)
+    activity_type
+    xp_source
   }
 }
 
 // ─── TOPSHIRIQLAR ────────────────────────────────────────────
 
 Table assignments {
-  id          uuid   [pk, default: `gen_random_uuid()`]
-  title       varchar [not null]
+  id          uuid              [pk, default: `gen_random_uuid()`]
+  title       varchar           [not null]
   description text
-  type        varchar [not null, note: 'reading|listening|writing|speaking|grammar|vocabulary|test']
-  teacher_id  uuid   [ref: > users.id]
-  group_id    uuid   [ref: > groups.id]
-  lesson_id   uuid   [ref: > lessons.id]
+  type        assignment_type   [not null]
+  teacher_id  uuid              [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  group_id    uuid              [ref: > groups.id, note: 'ON DELETE SET NULL']
+  lesson_id   uuid              [ref: > lessons.id, note: 'ON DELETE SET NULL']
   due_date    timestamptz
-  max_score   int    [not null, default: 100]
-  status      varchar [not null, default: 'draft', note: 'draft|active|closed']
-  created_at  timestamptz [default: `now()`]
-  updated_at  timestamptz [default: `now()`]
+  max_score   int               [not null, default: 100]
+  status      assignment_status [not null, default: 'draft']
+  created_at  timestamptz       [default: `now()`]
+  updated_at  timestamptz       [default: `now()`]
 
   indexes {
     teacher_id
-    group_id
-    status
+    (group_id, status)
     due_date
   }
 }
 
 Table assignment_submissions {
-  id              uuid   [pk, default: `gen_random_uuid()`]
-  assignment_id   uuid   [ref: > assignments.id]
-  student_id      uuid   [ref: > users.id]
-  file_id         varchar
-  text_content    text
-  score           int
-  feedback        text
-  status          varchar [not null, default: 'pending', note: 'pending|submitted|graded|late|revision_needed']
-  submitted_at    timestamptz
-  graded_at       timestamptz
-  graded_by       uuid   [ref: > users.id]
-  created_at      timestamptz [default: `now()`]
-  updated_at      timestamptz [default: `now()`]
+  id            uuid              [pk, default: `gen_random_uuid()`]
+  assignment_id uuid              [not null, ref: > assignments.id, note: 'ON DELETE CASCADE']
+  student_id    uuid              [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  file_url      varchar
+  text_content  text
+  score         int
+  feedback      text
+  status        submission_status [not null, default: 'pending']
+  submitted_at  timestamptz
+  graded_at     timestamptz
+  graded_by     uuid              [ref: > users.id, note: 'ON DELETE SET NULL']
+  created_at    timestamptz       [default: `now()`]
+  updated_at    timestamptz       [default: `now()`]
 
   indexes {
     (assignment_id, student_id) [unique]
-    assignment_id
     student_id
     status
+    graded_by
   }
 }
 
 // ─── BILDIRISHNOMALAR ────────────────────────────────────────
 
 Table notifications {
-  id              uuid    [pk, default: `gen_random_uuid()`]
-  user_id         uuid    [ref: > users.id]
-  type            varchar [not null, note: 'message|lesson_unlocked|achievement|assignment|reminder|system']
-  title           varchar [not null]
-  body            text
-  is_read         boolean [not null, default: false]
-  reference_id    uuid    [note: 'Related entity ID']
-  reference_type  varchar [note: 'lesson|assignment|achievement|message']
-  created_at      timestamptz [default: `now()`]
+  id             uuid              [pk, default: `gen_random_uuid()`]
+  user_id        uuid              [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  type           notification_type [not null]
+  title          varchar           [not null]
+  body           text
+  is_read        boolean           [not null, default: false]
+  reference_id   uuid              [note: 'Polimorf havola ID (FK yo‘q)']
+  reference_type varchar           [note: 'lesson|assignment|achievement|message']
+  created_at     timestamptz       [default: `now()`]
+  updated_at     timestamptz       [default: `now()`]
 
   indexes {
-    user_id
     (user_id, is_read)
     created_at
   }
@@ -700,18 +839,25 @@ Table notifications {
 // ─── XABARLAR ────────────────────────────────────────────────
 
 Table messages {
-  id           uuid    [pk, default: `gen_random_uuid()`]
-  sender_id    uuid    [ref: > users.id]
-  receiver_id  uuid    [ref: > users.id]
-  body         text    [not null]
-  attachments  text    [note: 'JSON: [{file_id, type, name}]']
-  is_read      boolean [not null, default: false]
-  created_at   timestamptz [default: `now()`]
+  id          uuid        [pk, default: `gen_random_uuid()`]
+  sender_id   uuid        [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  receiver_id uuid        [not null, ref: > users.id, note: 'ON DELETE CASCADE']
+  body        text        [not null]
+  attachments jsonb       [note: '[{file_id, type, name}] (kodda hozir text → jsonb sync kerak)']
+  is_read     boolean     [not null, default: false]
+  created_at  timestamptz [default: `now()`]
+  updated_at  timestamptz [default: `now()`]
 
   indexes {
     sender_id
-    receiver_id
     (receiver_id, is_read)
     created_at
   }
 }
+
+// ============================================================
+// TUGADI — 46 jadval + 22 enum.
+// Delete qoidalari `note: 'ON DELETE ...'` sifatida (dbdiagram parseri
+// inline `delete:` ni qo'llab-quvvatlamaydi; enumlar ko'p-qatorli bo'lishi shart).
+// Kod ↔ DBML moslashtirish ro'yxati: SQL/CODE_SYNC.md
+// ============================================================

@@ -10,7 +10,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { diskStorage } from 'multer';
-import { extname, join } from 'path';
+import { extname, join, resolve, sep } from 'path';
 import * as fs from 'fs';
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -46,7 +46,10 @@ export class UploadController {
     try {
       // oldPath may be a relative path (/uploads/...) or a legacy full URL
       const relative = oldPath.replace(/^https?:\/\/[^/]+/, '');
-      const filePath = join(process.cwd(), relative);
+      const uploadsRoot = resolve(join(process.cwd(), 'uploads'));
+      const filePath = resolve(join(process.cwd(), relative));
+      // Path traversal himoyasi: faqat uploads/ ichidagi fayllarni o'chirishga ruxsat
+      if (filePath !== uploadsRoot && !filePath.startsWith(uploadsRoot + sep)) return;
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     } catch {
       // eski fayl o'chirilmasa jarayon to'xtatilmaydi
@@ -142,7 +145,7 @@ export class UploadController {
           cb(new BadRequestException('Faqat video fayllar qabul qilinadi (mp4, webm, ogg, mov)'), false);
         }
       },
-      limits: { fileSize: 20 * 1024 * 1024 * 1024 },
+      limits: { fileSize: 200 * 1024 * 1024 },
     }),
   )
   uploadVideo(@UploadedFile() file: Express.Multer.File) {
@@ -161,7 +164,7 @@ export class UploadController {
           cb(new BadRequestException('Faqat video fayllar qabul qilinadi (mp4, webm, ogg, mov)'), false);
         }
       },
-      limits: { fileSize: 20 * 1024 * 1024 * 1024 },
+      limits: { fileSize: 200 * 1024 * 1024 },
     }),
   )
   updateVideo(@UploadedFile() file: Express.Multer.File, @Body('oldUrl') oldUrl: string) {

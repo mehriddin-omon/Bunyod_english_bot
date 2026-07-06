@@ -2,8 +2,9 @@ import { Column, Entity, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { BaseEntity } from './base.entity';
 import { Lesson } from './lesson.entity';
 import { ListeningTranscript } from './listening-transcript.entity';
-import { ListeningQuestion } from './listening-question.entity';
 
+// Eslatma: savollar endi Exercise/ExerciseItem da, owner_block_type='listening' +
+// owner_block_id=listening_contents.id orqali (polimorf) — qarang: exercise.entity.ts.
 @Entity({ name: 'listening_contents' })
 export class ListeningContent extends BaseEntity {
   @Column({ type: 'uuid', name: 'lesson_id' })
@@ -36,7 +37,4 @@ export class ListeningContent extends BaseEntity {
 
   @OneToMany(() => ListeningTranscript, (t) => t.listeningContent, { cascade: true })
   transcripts: ListeningTranscript[];
-
-  @OneToMany(() => ListeningQuestion, (q) => q.listeningContent, { cascade: true })
-  questions: ListeningQuestion[];
 }

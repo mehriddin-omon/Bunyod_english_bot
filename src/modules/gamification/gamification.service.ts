@@ -45,48 +45,92 @@ export class GamificationService {
 
     const board: any[] = [];
     for (const member of members) {
-      const gamification = await this.gamificationRepo.findOne({ where: { userId: member.id } });
+      let gamification = await this.gamificationRepo.findOne({ where: { userId: member.id } });
       if (!gamification) continue;
+
+      gamification = await this.rolloverWeekSnapshotIfNeeded(gamification);
 
       const firstName = member.firstName ?? '';
       const lastName = member.lastName ?? '';
       board.push({
-        user_id: member.id,
-        first_name: firstName,
-        last_name: lastName,
+        userId: member.id,
+        firstName,
+        lastName,
         initials: `${(firstName[0] ?? ' ')}${(lastName[0] ?? ' ')}`.toUpperCase(),
         level: gamification.level,
-        xp_in_level: Math.round(((gamification.xpTotal % 100) / 100) * 100),
-        total_xp: gamification.xpTotal,
-        weekly_xp: gamification.xpWeekly,
+        xpInLevel: Math.round(((gamification.xpTotal % 100) / 100) * 100),
+        totalXp: gamification.xpTotal,
+        weeklyXp: gamification.xpWeekly,
         league: this.leagueIndex(gamification.league),
-        league_name: LEAGUE_NAMES[this.leagueIndex(gamification.league)],
+        leagueName: LEAGUE_NAMES[this.leagueIndex(gamification.league)],
         streak: gamification.streakCurrent,
-        weekly_rank_change: 0,
-        is_current_user: member.id === userId,
+        _previousRankWeekly: gamification.previousRankWeekly,
+        isCurrentUser: member.id === userId,
       });
     }
 
     board.sort((a, b) =>
-      period === 'week' ? b.weekly_xp - a.weekly_xp : b.total_xp - a.total_xp,
+      period === 'week' ? b.weeklyXp - a.weeklyXp : b.totalXp - a.totalXp,
     );
 
-    board.forEach((b, i) => { b.rank = i + 1; });
+    board.forEach((b, i) => {
+      b.rank = i + 1;
+      // Musbat qiymat — reytingda yuqoriga ko'tarilgan (o'tgan hafta o'rni - joriy o'rin)
+      b.weeklyRankChange =
+        b._previousRankWeekly != null ? b._previousRankWeekly - b.rank : 0;
+      delete b._previousRankWeekly;
+    });
 
-    const totalXp = board.reduce((s, b) => s + b.weekly_xp, 0);
+    const totalXp = board.reduce((s, b) => s + b.weeklyXp, 0);
     const targetXp = 5000;
 
     return {
       period,
-      current_user_id: userId,
+      currentUserId: userId,
       board,
-      group_challenge: {
-        target_xp: targetXp,
-        current_xp: totalXp,
-        days_left: 3,
+      groupChallenge: {
+        targetXp,
+        currentXp: totalXp,
+        daysLeft: this.daysLeftInWeek(),
         reward: "Qo'shimcha so'z paketi",
       },
     };
+  }
+
+  /** Hafta almashganda (haftaning boshiga kelganda) joriy xp_weekly/rank_weekly
+   *  qiymatlarini "previous" snapshotga ko'chiradi. To'liq tarixiy jadval
+   *  o'rniga eng arzon yechim: lazy — o'qishda tekshirib, kerak bo'lsa yangilaymiz. */
+  private async rolloverWeekSnapshotIfNeeded(
+    gamification: UserGamification,
+  ): Promise<UserGamification> {
+    const mondayThisWeek = this.startOfWeek(new Date());
+    const lastSnapshot = gamification.weekSnapshotAt ? new Date(gamification.weekSnapshotAt) : null;
+
+    if (!lastSnapshot || lastSnapshot < mondayThisWeek) {
+      gamification.previousWeekXp = gamification.xpWeekly;
+      gamification.previousRankWeekly = gamification.rankWeekly ?? null;
+      gamification.weekSnapshotAt = mondayThisWeek;
+      await this.gamificationRepo.save(gamification);
+    }
+
+    return gamification;
+  }
+
+  private startOfWeek(date: Date): Date {
+    const d = new Date(date);
+    const dayOfWeek = (d.getDay() + 6) % 7; // 0=Monday
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - dayOfWeek);
+    return d;
+  }
+
+  /** Joriy hafta (dushanba-yakshanba) tugashiga necha kun qolganini hisoblaydi. */
+  private daysLeftInWeek(): number {
+    const now = new Date();
+    const monday = this.startOfWeek(now);
+    const nextMonday = new Date(monday);
+    nextMonday.setDate(monday.getDate() + 7);
+    return Math.max(0, Math.ceil((nextMonday.getTime() - now.getTime()) / 86400000));
   }
 
   async getMyGamification(userId: string): Promise<any> {
@@ -128,13 +172,13 @@ export class GamificationService {
     return {
       xp: gamification.xpTotal,
       level: gamification.level,
-      xp_in_level: xpInCurrentLevel,
-      xp_to_next_level: xpToNextLevel,
+      xpInLevel: xpInCurrentLevel,
+      xpToNextLevel: xpToNextLevel,
       league: leagueIdx,
-      league_name: LEAGUE_NAMES[leagueIdx],
+      leagueName: LEAGUE_NAMES[leagueIdx],
       streak: gamification.streakCurrent,
-      weekly_xp: gamification.xpWeekly,
-      rank_in_group: rankInGroup,
+      weeklyXp: gamification.xpWeekly,
+      rankInGroup: rankInGroup,
       achievements: allAchievements.map((a) => {
         const earned = userAchievements.find((ua) => ua.achievementId === a.id);
         return {
@@ -142,7 +186,7 @@ export class GamificationService {
           title: a.title,
           icon: a.icon,
           unlocked: !!earned,
-          unlocked_at: earned?.earnedAt ?? null,
+          unlockedAt: earned?.earnedAt ?? null,
         };
       }),
     };

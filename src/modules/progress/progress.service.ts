@@ -114,6 +114,47 @@ export class ProgressService {
     };
   }
 
+  /**
+   * Talaba darsda o'tkazgan vaqtni (soniya) qo'shadi — dars yakunlanmagan
+   * bo'lsa ham. Teacher paneldagi "Davomat" (foydalanish vaqti) shu ma'lumotdan
+   * hisoblanadi. lesson_progress.timeSpentSec, daily_tracking.minutesSpent va
+   * gamification.lastActivityDate yangilanadi.
+   */
+  async addTimeSpent(userId: string, lessonId: string, seconds: number) {
+    if (!seconds || seconds <= 0) return { added: 0 };
+    const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
+    if (!lesson) throw new NotFoundException('Dars topilmadi');
+
+    let progress = await this.progressRepo.findOne({ where: { userId, lessonId } });
+    if (!progress) {
+      progress = this.progressRepo.create({
+        userId,
+        lessonId,
+        status: LessonProgressStatus.in_progress,
+        attempts: 1,
+      });
+    } else if (progress.status === LessonProgressStatus.not_started) {
+      progress.status = LessonProgressStatus.in_progress;
+    }
+    progress.timeSpentSec = (progress.timeSpentSec ?? 0) + seconds;
+    await this.progressRepo.save(progress);
+
+    const today = new Date().toISOString().split('T')[0];
+    let daily = await this.dailyRepo.findOne({ where: { userId, date: today } });
+    if (!daily) daily = this.dailyRepo.create({ userId, date: today, goalMinutes: 30 });
+    daily.minutesSpent += Math.round(seconds / 60);
+    await this.dailyRepo.save(daily);
+
+    let gamification = await this.gamificationRepo.findOne({ where: { userId } });
+    if (!gamification) {
+      gamification = this.gamificationRepo.create({ userId, level: 1, xpTotal: 0, xpWeekly: 0, streakCurrent: 0 });
+    }
+    gamification.lastActivityDate = today;
+    await this.gamificationRepo.save(gamification);
+
+    return { added: seconds, totalSec: progress.timeSpentSec };
+  }
+
   async getOverview(userId: string) {
     const allProgress = await this.progressRepo.find({ where: { userId }, relations: ['lesson'] });
     const completed = allProgress.filter((p) => p.status === LessonProgressStatus.completed);

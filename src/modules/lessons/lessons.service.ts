@@ -7,7 +7,10 @@ import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
 import { GrammarContent } from 'src/common/core/entitys/grammar-content.entity';
 import { ReadingContent } from 'src/common/core/entitys/reading-content.entity';
 import { ListeningContent } from 'src/common/core/entitys/listening-content.entity';
-import { LessonProgressStatus, LessonStatus, Role } from 'src/common/utils/enum';
+import { ListeningTranscript } from 'src/common/core/entitys/listening-transcript.entity';
+import { QuizContent } from 'src/common/core/entitys/quiz-content.entity';
+import { Exercise } from 'src/common/core/entitys/exercise.entity';
+import { LessonProgressStatus, LessonStatus, Role, StudentAnswerBlockType } from 'src/common/utils/enum';
 
 @Injectable()
 export class LessonsService {
@@ -29,7 +32,44 @@ export class LessonsService {
 
     @InjectRepository(ListeningContent)
     private readonly listeningRepo: Repository<ListeningContent>,
+
+    @InjectRepository(QuizContent)
+    private readonly quizRepo: Repository<QuizContent>,
+
+    @InjectRepository(ListeningTranscript)
+    private readonly listeningTranscriptRepo: Repository<ListeningTranscript>,
+
+    @InjectRepository(Exercise)
+    private readonly exerciseRepo: Repository<Exercise>,
   ) { }
+
+  /** Berilgan blok(lar) uchun exercises ni yagona formatda oladi (student output, quiz.md 5.3). */
+  private async exercisesFor(ownerType: StudentAnswerBlockType, ownerBlockId: string) {
+    const exercises = await this.exerciseRepo.find({
+      where: { ownerBlockType: ownerType, ownerBlockId },
+      relations: ['items'],
+      order: { orderIndex: 'ASC' },
+    });
+    return exercises.map((e) => ({
+      id: e.id,
+      type: e.exerciseType,
+      title: e.title,
+      instructions: e.instructions,
+      orderIndex: e.orderIndex,
+      items: (e.items ?? [])
+        .slice()
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map((i) => ({
+          id: i.id,
+          itemText: i.itemText,
+          correctAnswer: i.correctAnswer,
+          options: i.options ?? [],
+          imageUrl: i.imageUrl,
+          explanation: i.explanation,
+          orderIndex: i.orderIndex,
+        })),
+    }));
+  }
 
   async getUnits(userId: string, role: Role) {
     const units = await this.unitRepo.find({ order: { number: 'ASC' } });
@@ -172,22 +212,20 @@ export class LessonsService {
   async getReadingContent(lessonId: string) {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
-    const content = await this.readingRepo.find({
-      where: { lessonId },
-      relations: ['questions', 'questions.options'],
-      order: { orderIndex: 'ASC' },
-    });
+    const readings = await this.readingRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } });
+    const content = await Promise.all(
+      readings.map(async (r) => ({ ...r, exercises: await this.exercisesFor(StudentAnswerBlockType.reading, r.id) })),
+    );
     return { lessonId, content };
   }
 
   async getListeningContent(lessonId: string) {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
-    const content = await this.listeningRepo.find({
-      where: { lessonId },
-      relations: ['transcripts', 'questions', 'questions.options'],
-      order: { orderIndex: 'ASC' },
-    });
+    const listenings = await this.listeningRepo.find({ where: { lessonId }, relations: ['transcripts'], order: { orderIndex: 'ASC' } });
+    const content = await Promise.all(
+      listenings.map(async (l) => ({ ...l, exercises: await this.exercisesFor(StudentAnswerBlockType.listening, l.id) })),
+    );
     return { lessonId, content };
   }
 
@@ -227,75 +265,82 @@ export class LessonsService {
     );
   }
 
+  /**
+   * Barcha blok turlari (quiz/reading/listening/grammar) uchun AYNAN BIR XIL
+   * `exercises` formatida mashqlarni qaytaradi. Qarang: quiz.md 5.3.
+   */
   async getLessonBlocks(lessonId: string) {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
 
-    const [grammars, readings, listenings] = await Promise.all([
+    const [grammars, readings, listenings, quizzes] = await Promise.all([
       this.grammarRepo.find({ where: { lessonId }, order: { createdAt: 'ASC' } }),
-      this.readingRepo.find({
-        where: { lessonId },
-        relations: ['questions', 'questions.options'],
-        order: { orderIndex: 'ASC' },
-      }),
-      this.listeningRepo.find({
-        where: { lessonId },
-        relations: ['transcripts', 'questions', 'questions.options'],
-        order: { orderIndex: 'ASC' },
-      }),
+      this.readingRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } }),
+      this.listeningRepo.find({ where: { lessonId }, relations: ['transcripts'], order: { orderIndex: 'ASC' } }),
+      this.quizRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } }),
     ]);
 
-    let order = 1;
+    // O'qituvchi belgilagan tartib: orderIndex (grammar doim birinchi), teng bo'lsa createdAt
+    const sortMeta = new Map<string, { idx: number; created: number }>();
+    grammars.forEach((g) => sortMeta.set(g.id, { idx: -1, created: +new Date(g.createdAt) }));
+    readings.forEach((r) => sortMeta.set(r.id, { idx: r.orderIndex ?? 0, created: +new Date(r.createdAt) }));
+    listenings.forEach((l) => sortMeta.set(l.id, { idx: l.orderIndex ?? 0, created: +new Date(l.createdAt) }));
+    quizzes.forEach((q) => sortMeta.set(q.id, { idx: q.orderIndex ?? 0, created: +new Date(q.createdAt) }));
 
-    const grammarBlocks = grammars.map((g) => ({
-      id: g.id,
-      type: 'grammar' as const,
-      order: order++,
-      grammarPage: g.pageName,
-    }));
-
-    const readingBlocks = readings.map((r) => ({
-      id: r.id,
-      type: 'reading' as const,
-      order: order++,
-      title: r.title,
-      content: r.textContent,
-      wordCount: r.wordCount,
-      readTimeMinutes: r.readingTimeMinutes,
-      questions: r.questions
-        .sort((a, b) => a.orderIndex - b.orderIndex)
-        .map((q) => ({
-          id: q.id,
-          questionText: q.questionText,
-          questionType: q.questionType,
-          options: q.options
-            .sort((a, b) => a.orderIndex - b.orderIndex)
-            .map((o) => ({ id: o.id, optionText: o.optionText, isCorrect: o.isCorrect })),
+    const [grammarBlocks, readingBlocks, listeningBlocks, quizBlocks] = await Promise.all([
+      Promise.all(
+        grammars.map(async (g) => ({
+          id: g.id,
+          type: 'grammar' as const,
+          order: 0,
+          grammarPage: g.pageName,
+          exercises: await this.exercisesFor(StudentAnswerBlockType.grammar, g.id),
         })),
-    }));
-
-    const listeningBlocks = listenings.map((l) => ({
-      id: l.id,
-      type: 'listening' as const,
-      order: order++,
-      title: l.title,
-      audioUrl: l.fileId || null,
-      duration: l.durationSeconds,
-      transcript: l.transcripts
-        .sort((a, b) => a.orderIndex - b.orderIndex)
-        .map((t) => ({ speaker: t.speakerName, timeStart: t.timestampSec, text: t.textContent })),
-      questions: l.questions
-        .sort((a, b) => a.orderIndex - b.orderIndex)
-        .map((q) => ({
-          id: q.id,
-          type: 'mcq' as const,
-          question: q.questionText,
-          options: q.options.sort((a, b) => a.orderIndex - b.orderIndex).map((o) => o.optionText),
-          correctAnswer: q.options.find((o) => o.isCorrect)?.optionText ?? '',
+      ),
+      Promise.all(
+        readings.map(async (r) => ({
+          id: r.id,
+          type: 'reading' as const,
+          order: 0,
+          reading: { title: r.title, content: r.textContent, wordCount: r.wordCount, readTimeMinutes: r.readingTimeMinutes },
+          exercises: await this.exercisesFor(StudentAnswerBlockType.reading, r.id),
         })),
-    }));
+      ),
+      Promise.all(
+        listenings.map(async (l) => ({
+          id: l.id,
+          type: 'listening' as const,
+          order: 0,
+          listening: {
+            title: l.title,
+            audioUrl: l.fileId || null,
+            imageUrl: l.imageUrl,
+            duration: l.durationSeconds,
+            transcript: (l.transcripts ?? [])
+              .sort((a, b) => a.orderIndex - b.orderIndex)
+              .map((t) => ({ speaker: t.speakerName, timeStart: t.timestampSec, text: t.textContent })),
+          },
+          exercises: await this.exercisesFor(StudentAnswerBlockType.listening, l.id),
+        })),
+      ),
+      Promise.all(
+        quizzes.map(async (q) => ({
+          id: q.id,
+          type: 'quiz' as const,
+          order: 0,
+          quiz: { title: q.title },
+          exercises: await this.exercisesFor(StudentAnswerBlockType.quiz, q.id),
+        })),
+      ),
+    ]);
 
-    return [...grammarBlocks, ...readingBlocks, ...listeningBlocks];
+    const all = [...grammarBlocks, ...readingBlocks, ...listeningBlocks, ...quizBlocks].sort((a, b) => {
+      const A = sortMeta.get(a.id)!;
+      const B = sortMeta.get(b.id)!;
+      return A.idx - B.idx || A.created - B.created;
+    });
+
+    return all.map((b, i) => ({ ...b, order: i + 1 }));
   }
 
   async getLesson(lessonId: string, userId: string) {

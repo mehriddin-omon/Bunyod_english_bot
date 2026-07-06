@@ -24,3 +24,9 @@ export class UpsertProgressDto {
   @Max(100)
   score: number;
 }
+
+export class ReportTimeDto {
+  @IsInt()
+  @Min(0)
+  seconds: number;
+}

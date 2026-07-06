@@ -34,6 +34,15 @@ export class UserGamification extends BaseEntity {
 
   @Column({ type: 'int', name: 'rank_weekly', nullable: true })
   rankWeekly: number;
+
+  @Column({ type: 'int', name: 'previous_week_xp', default: 0 })
+  previousWeekXp: number;
+
+  @Column({ type: 'int', name: 'previous_rank_weekly', nullable: true })
+  previousRankWeekly: number;
+
+  @Column({ type: 'timestamptz', name: 'week_snapshot_at', nullable: true })
+  weekSnapshotAt: Date | null;
 }
 
 @Entity({ name: 'xp_transactions' })

@@ -4,6 +4,10 @@ import { Repository } from 'typeorm';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
 import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { Group } from 'src/common/core/entitys/group.entity';
+import {
+  UserVocabularyProgress,
+  VocabStatus,
+} from 'src/common/core/entitys/user-vocabulary-progress.entity';
 import { LessonProgressStatus } from 'src/common/utils/enum';
 
 @Injectable()
@@ -17,7 +21,28 @@ export class StatisticsService {
 
     @InjectRepository(Group)
     private readonly groupRepo: Repository<Group>,
+
+    @InjectRepository(UserVocabularyProgress)
+    private readonly vocabProgressRepo: Repository<UserVocabularyProgress>,
   ) {}
+
+  /** Foizga qarab taxminiy CEFR darajasi (statik B1 o'rniga). */
+  private pctToLevel(pct: number): string {
+    if (pct >= 90) return 'C1';
+    if (pct >= 75) return 'B2';
+    if (pct >= 55) return 'B1';
+    if (pct >= 35) return 'A2';
+    return 'A1';
+  }
+
+  /** Berilgan ustun bo'yicha null bo'lmagan ballar o'rtachasi (0 agar yo'q). */
+  private avgOf(rows: LessonProgress[], field: keyof LessonProgress): number {
+    const vals = rows
+      .map((p) => p[field] as number | null)
+      .filter((v): v is number => v != null);
+    if (!vals.length) return 0;
+    return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+  }
 
   async getStudentStatistics(userId: string, lessonId: string) {
     const progress = await this.progressRepo.findOne({ where: { userId, lessonId } });
@@ -126,30 +151,52 @@ export class StatisticsService {
   async getMyStats(userId: string) {
     const allProgress = await this.progressRepo.find({ where: { userId } });
     const completedCount = allProgress.filter((p) => p.status === LessonProgressStatus.completed).length;
-    const avgScore = allProgress.length
-      ? Math.round(allProgress.reduce((s, p) => s + (p.score ?? 0), 0) / allProgress.length)
+    const scored = allProgress.filter((p) => p.score != null);
+    const avgScore = scored.length
+      ? Math.round(scored.reduce((s, p) => s + (p.score ?? 0), 0) / scored.length)
       : 0;
 
+    // Skill foizlari endi haqiqiy lesson_progress ustunlaridan hisoblanadi
+    // (avval qattiq kodlangan qiymatlar edi — quiz.md 5.3 ga mos).
+    const readingPct = this.avgOf(allProgress, 'readingScore');
+    const grammarPct = this.avgOf(allProgress, 'grammarScore');
+    const listeningPct = this.avgOf(allProgress, 'listeningScore');
+    const vocabPct = this.avgOf(allProgress, 'vocabularyScore');
+    const speakingPct = this.avgOf(allProgress, 'speakingScore');
+    // Writing uchun alohida ustun yo'q — quiz bali proksisi sifatida ishlatamiz
+    const writingPct = this.avgOf(allProgress, 'quizScore');
+
+    // Haqiqiy lug'at holati
+    const [learnedWords, masteredWords] = await Promise.all([
+      this.vocabProgressRepo.count({
+        where: [
+          { userId, status: VocabStatus.learning },
+          { userId, status: VocabStatus.mastered },
+        ],
+      }),
+      this.vocabProgressRepo.count({ where: { userId, status: VocabStatus.mastered } }),
+    ]);
+    const retention = learnedWords ? Math.round((masteredWords / learnedWords) * 100) : 0;
+
+    const cefrProgress = Math.round(
+      (readingPct + grammarPct + listeningPct + vocabPct) / 4,
+    );
+
     return {
-      cefr_level: 'B1',
-      cefr_progress: 32,
+      cefr_level: this.pctToLevel(cefrProgress),
+      cefr_progress: cefrProgress,
       skills: {
-        reading: { level: 'B1', pct: 88 },
-        grammar: { level: 'B1', pct: 84 },
-        writing: { level: 'B1', pct: 79 },
-        vocabulary: { level: 'B1', pct: 76, word_count: 1240 },
-        listening: { level: 'A2', pct: 68 },
-        speaking: { level: 'A2', pct: 62 },
+        reading: { level: this.pctToLevel(readingPct), pct: readingPct },
+        grammar: { level: this.pctToLevel(grammarPct), pct: grammarPct },
+        writing: { level: this.pctToLevel(writingPct), pct: writingPct },
+        vocabulary: { level: this.pctToLevel(vocabPct), pct: vocabPct, word_count: learnedWords },
+        listening: { level: this.pctToLevel(listeningPct), pct: listeningPct },
+        speaking: { level: this.pctToLevel(speakingPct), pct: speakingPct },
       },
       vocabulary: {
-        total: 1240,
-        retention: 91,
-        by_level: [
-          { level: 'A1', count: 320 },
-          { level: 'A2', count: 410 },
-          { level: 'B1', count: 380 },
-          { level: 'B2', count: 130 },
-        ],
+        total: learnedWords,
+        retention,
+        by_level: [],
       },
       activity_heatmap: [],
       weekly_minutes: [],

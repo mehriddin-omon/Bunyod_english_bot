@@ -154,6 +154,96 @@ export class BlocksController {
     return this.svc.saveQuiz(lessonId, blockId, dto);
   }
 
+  // ─── Mashqlar (Exercises) — UMUMIY CRUD, istalgan blok turi uchun ─────
+  // (quiz | reading | listening | grammar — blok turi serverda avtomatik aniqlanadi)
+
+  @Get('blocks/:blockId/exercises')
+  getExercises(@Param('lessonId') lessonId: string, @Param('blockId') blockId: string) {
+    return this.svc.getExercises(lessonId, blockId);
+  }
+
+  @Post('blocks/:blockId/exercises')
+  @HttpCode(HttpStatus.CREATED)
+  addExerciseGeneric(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Body() dto: { title?: string; instructions?: string; exerciseType: string },
+  ) {
+    return this.svc.addExercise(lessonId, blockId, dto);
+  }
+
+  @Put('blocks/:blockId/exercises/reorder')
+  reorderExercisesGeneric(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Body('exerciseIds') exerciseIds: string[],
+  ) {
+    return this.svc.reorderExercises(lessonId, blockId, exerciseIds);
+  }
+
+  @Put('blocks/:blockId/exercises/:exerciseId')
+  updateExerciseGeneric(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+    @Body() dto: { title?: string; instructions?: string; exerciseType?: string },
+  ) {
+    return this.svc.updateExercise(lessonId, blockId, exerciseId, dto);
+  }
+
+  @Delete('blocks/:blockId/exercises/:exerciseId')
+  deleteExerciseGeneric(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+  ) {
+    return this.svc.deleteExercise(lessonId, blockId, exerciseId);
+  }
+
+  @Post('blocks/:blockId/exercises/:exerciseId/items')
+  @HttpCode(HttpStatus.CREATED)
+  addItemGeneric(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+    @Body() dto: { itemText: string; correctAnswer: string; options?: any[]; imageUrl?: string; explanation?: string },
+  ) {
+    return this.svc.addItem(lessonId, blockId, exerciseId, dto);
+  }
+
+  @Put('blocks/:blockId/exercises/:exerciseId/items/reorder')
+  reorderItemsGeneric(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+    @Body('itemIds') itemIds: string[],
+  ) {
+    return this.svc.reorderItems(lessonId, blockId, exerciseId, itemIds);
+  }
+
+  @Put('blocks/:blockId/exercises/:exerciseId/items/:itemId')
+  updateItemGeneric(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: { itemText?: string; correctAnswer?: string; options?: any[] | null; imageUrl?: string | null; explanation?: string | null },
+  ) {
+    return this.svc.updateItem(lessonId, blockId, exerciseId, itemId, dto);
+  }
+
+  @Delete('blocks/:blockId/exercises/:exerciseId/items/:itemId')
+  deleteItemGeneric(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+    @Param('itemId') itemId: string,
+  ) {
+    return this.svc.deleteItem(lessonId, blockId, exerciseId, itemId);
+  }
+
+  // ─── Eski quiz-only exercise yo'llari (backward compat, xuddi shu servisga) ─
+
   @Post('blocks/:blockId/quiz/exercises')
   @HttpCode(HttpStatus.CREATED)
   addExercise(

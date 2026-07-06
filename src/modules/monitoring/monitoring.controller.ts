@@ -26,4 +26,11 @@ export class MonitoringController {
   async getStudentMonitoring(@Param('studentId') studentId: string) {
     return this.monitoringService.getStudentMonitoring(studentId);
   }
+
+  /** GET /monitoring/assignments/:assignmentId/status-breakdown */
+  @Get('assignments/:assignmentId/status-breakdown')
+  @Roles(Role.teacher, Role.admin)
+  async getAssignmentStatusBreakdown(@Param('assignmentId') assignmentId: string) {
+    return this.monitoringService.getAssignmentStatusBreakdown(assignmentId);
+  }
 }

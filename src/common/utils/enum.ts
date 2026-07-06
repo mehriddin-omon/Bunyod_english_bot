@@ -35,6 +35,24 @@ export enum QuestionType {
   matching = 'matching',
 }
 
+/** Student javobi qaysi blok turiga tegishli */
+export enum StudentAnswerBlockType {
+  quiz = 'quiz',
+  reading = 'reading',
+  listening = 'listening',
+  grammar = 'grammar',
+}
+
+/** Quiz blok ichidagi mashq turlari */
+export enum QuizExerciseType {
+  matching = 'matching',
+  fill_in_blank = 'fill_in_blank',
+  multiple_choice = 'multiple_choice',
+  true_false = 'true_false',
+  word_bank = 'word_bank',
+  translation = 'translation',
+}
+
 export enum PartOfSpeech {
   noun = 'noun',
   verb = 'verb',

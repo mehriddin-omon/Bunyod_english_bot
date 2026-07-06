@@ -7,6 +7,9 @@ import helmet from 'helmet';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { ensureQuizEnum } from './database/ensure-quiz-enum';
+import { ensureStudentAnswersMigrated } from './database/ensure-student-answers';
+import { ensureExercisesUnified } from './database/ensure-exercises-unified';
 // import { UUIDInterceptor } from 'src/infrastructure';
 
 export default class Application {
@@ -19,7 +22,17 @@ export default class Application {
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     }
 
+    // TypeORM synchronize'dan oldin exercise_type ustunini enum ga o'tkazamiz
+    await ensureQuizEnum();
+    // quiz_exercises/quiz_items -> exercises/exercise_items + reading/listening
+    // savollarini yagona tizimga ko'chirish (synchronize'dan OLDIN)
+    await ensureExercisesUnified();
+
     const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+    // synchronize student_answers ni yaratganidan keyin eski javoblarni ko'chiramiz
+    await ensureStudentAnswersMigrated();
+
     app.useStaticAssets(uploadsDir, { prefix: '/uploads' });
     const environment = config.NODE_ENV || 'development';
     app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));

@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Req, UseGuards } from '@nestjs/common';
 import { ProgressService } from './progress.service';
-import { CompleteLessonDto, UpsertProgressDto } from './dto/progress.dto';
+import { CompleteLessonDto, ReportTimeDto, UpsertProgressDto } from './dto/progress.dto';
 import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -27,6 +27,17 @@ export class ProgressController {
     @Req() req: any,
   ) {
     return this.progressService.completeLesson(req.user.sub, lessonId, dto);
+  }
+
+  /** POST /progress/lessons/:lessonId/time — darsda o'tkazilgan vaqtni (soniya) qo'shadi */
+  @Post('lessons/:lessonId/time')
+  @Roles(Role.student)
+  async reportTime(
+    @Param('lessonId') lessonId: string,
+    @Body() dto: ReportTimeDto,
+    @Req() req: any,
+  ) {
+    return this.progressService.addTimeSpent(req.user.sub, lessonId, dto.seconds);
   }
 
   /** GET /progress/overview */

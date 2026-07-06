@@ -19,14 +19,14 @@ export class NotificationsService {
     const unreadCount = notifications.filter((n) => !n.isRead).length;
 
     return {
-      unread_count: unreadCount,
+      unreadCount,
       notifications: notifications.map((n) => ({
         id: n.id,
         title: n.title,
         body: n.body,
         type: n.type,
-        read: n.isRead,
-        created_at: n.createdAt,
+        isRead: n.isRead,
+        createdAt: n.createdAt,
       })),
     };
   }
