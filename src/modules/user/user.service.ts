@@ -13,6 +13,9 @@ import { User } from 'src/common/core/entitys/user.entity';
 import { Group } from 'src/common/core/entitys/group.entity';
 import { UserGamification } from 'src/common/core/entitys/gamification.entity';
 
+/** Teacher / subTeacher ro'yxatda ko'ra oladigan rollar */
+const TEACHER_VISIBLE_ROLES: Role[] = [Role.student, Role.subTeacher];
+
 const ROLE_LEVEL: Record<Role, number> = {
   [Role.superAdmin]: 4,
   [Role.admin]: 3,
@@ -41,9 +44,13 @@ export class UserService {
 
     const qb = this.userRepo.createQueryBuilder('user');
 
-    if (requesterRole === Role.teacher) {
-      qb.where('user.created_by = :requesterId', { requesterId })
-        .andWhere('user.role IN (:...teacherAllowed)', { teacherAllowed: [Role.student, Role.subTeacher] });
+    if (requesterRole === Role.teacher || requesterRole === Role.subTeacher) {
+      // Teacher markazdagi barcha o'quvchilarni ko'radi (kim yaratganidan qat'i nazar),
+      // faqat admin/superAdmin akkauntlari yashiriladi.
+      qb.where('user.role IN (:...teacherAllowed)', { teacherAllowed: TEACHER_VISIBLE_ROLES });
+      if (query.role && TEACHER_VISIBLE_ROLES.includes(query.role)) {
+        qb.andWhere('user.role = :role', { role: query.role });
+      }
     } else {
       qb.where('user.role != :superAdmin', { superAdmin: Role.superAdmin });
       if (query.role) qb.andWhere('user.role = :role', { role: query.role });
@@ -79,13 +86,12 @@ export class UserService {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException('Foydalanuvchi topilmadi');
 
-    if (requesterRole === Role.teacher) {
-      const membership = await this.groupRepo
-        .createQueryBuilder('g')
-        .innerJoin('g.members', 'm', 'm.id = :userId', { userId: id })
-        .where('g.teacherId = :teacherId', { teacherId: requesterId })
-        .getOne();
-      if (!membership) throw new ForbiddenException("Bu foydalanuvchini ko'rish huquqi yo'q");
+    // Teacher ro'yxatda ko'rgan har bir o'quvchini ocha olishi kerak,
+    // shuning uchun findAll bilan bir xil qoida: faqat student/subTeacher.
+    if (requesterRole === Role.teacher || requesterRole === Role.subTeacher) {
+      if (!TEACHER_VISIBLE_ROLES.includes(user.role)) {
+        throw new ForbiddenException("Bu foydalanuvchini ko'rish huquqi yo'q");
+      }
     }
 
     const [group, gamification] = await Promise.all([

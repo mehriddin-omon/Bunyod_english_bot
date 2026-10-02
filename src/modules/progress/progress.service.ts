@@ -11,6 +11,7 @@ import { LessonProgressStatus } from 'src/common/utils/enum';
 import { VocabStatus } from 'src/common/core/entitys/user-vocabulary-progress.entity';
 import { CompleteLessonDto, UpsertProgressDto } from './dto/progress.dto';
 import { LessonGatingService } from 'src/common/services/lesson-gating.service';
+import { XpService } from '../gamification/xp.service';
 
 @Injectable()
 export class ProgressService {
@@ -34,6 +35,10 @@ export class ProgressService {
     private readonly vocabProgressRepo: Repository<UserVocabularyProgress>,
 
     private readonly lessonGatingService: LessonGatingService,
+
+    // Coin/XP faqat shu servis orqali beriladi — daftar bilan yig'ma
+    // ko'rsatkichlar hech qachon bir-biridan ajralib qolmaydi
+    private readonly xpService: XpService,
   ) {}
 
   /**
@@ -67,35 +72,46 @@ export class ProgressService {
     if (!lesson) throw new NotFoundException('Dars topilmadi');
     await this.assertLessonAccessible(userId, lessonId);
 
-    let progress = await this.progressRepo.findOne({ where: { userId, lessonId } });
-    if (!progress) {
-      progress = this.progressRepo.create({ userId, lessonId, status: LessonProgressStatus.in_progress, attempts: 1, timeSpentSec: 0 });
-    } else {
-      progress.status = LessonProgressStatus.in_progress;
-      progress.attempts += 1;
-    }
-    await this.progressRepo.save(progress);
+    const progress = await this.updateProgress(userId, lessonId, (p) => {
+      p.status = LessonProgressStatus.in_progress;
+      p.attempts += 1;
+    });
     return { progress_id: progress.id, started_at: new Date() };
   }
 
+  /**
+   * Darsni "tugallangan" deb belgilaydi.
+   *
+   * IDEMPOTENT: ilova endi darsni AVTOMATIK yakunlaydi (hamma bo'lim 100%
+   * bo'lganda), shuning uchun bir dars uchun bu so'rov takror kelishi tabiiy
+   * (ikki manba ketma-ket yangilandi, tarmoq qayta urinishi, boshqa qurilma).
+   * Allaqachon yakunlangan dars uchun hech narsa o'zgarmaydi — kunlik
+   * "yakunlangan darslar" soni va urinishlar qayta oshmaydi, faqat faollik
+   * qayd etiladi (streak kuniga bir marta o'sadi, bu o'zi idempotent).
+   */
   async completeLesson(userId: string, lessonId: string, dto: CompleteLessonDto) {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId }, relations: ['unit'] });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
     await this.assertLessonAccessible(userId, lessonId);
 
-    let progress = await this.progressRepo.findOne({ where: { userId, lessonId } });
-    if (!progress) {
-      progress = this.progressRepo.create({ userId, lessonId, attempts: 1 });
-    }
+    const existing = await this.progressRepo.findOne({ where: { userId, lessonId } });
+    const alreadyCompleted = existing?.status === LessonProgressStatus.completed;
 
-    progress.status = LessonProgressStatus.completed;
-    progress.score = dto.score;
-    progress.timeSpentSec = (progress.timeSpentSec ?? 0) + dto.timeSpent;
-    progress.completedAt = new Date();
-    await this.progressRepo.save(progress);
+    const progress = alreadyCompleted
+      ? existing!
+      : await this.updateProgress(userId, lessonId, (p) => {
+          p.status = LessonProgressStatus.completed;
+          p.score = dto.score;
+          p.timeSpentSec = (p.timeSpentSec ?? 0) + dto.timeSpent;
+          p.completedAt = new Date();
+          if (!p.attempts) p.attempts = 1;
+        });
 
-    const xpEarned = Math.round(10 + (dto.score / 100) * 40);
-    await this.updateGamification(userId, xpEarned, dto.timeSpent);
+    // COIN BERILMAYDI. Foydalanuvchi qarori: coin faqat mashq ishlanganda va
+    // so'z yodlanganda beriladi — darsni yakunlashning o'zi mukofot emas.
+    // Faollik esa qayd etiladi, streak uzilmasligi kerak.
+    await this.xpService.touchActivity(userId);
+    if (!alreadyCompleted) await this.bumpDaily(userId, Math.round(dto.timeSpent / 60), 1);
 
     const nextLesson = lesson.unitId
       ? await this.lessonRepo.findOne({ where: { unitId: lesson.unitId, orderIndex: lesson.orderIndex + 1 } })
@@ -105,12 +121,15 @@ export class ProgressService {
 
     return {
       progress: { status: progress.status, score: progress.score, time_spent: progress.timeSpentSec, completed_at: progress.completedAt },
-      xp_earned: xpEarned,
+      // Dars yakuni coin bermaydi — maydon eski mijozlar uchun qoldirilgan
+      xp_earned: 0,
       next_lesson: nextLesson
         ? { id: nextLesson.id, lesson_code: nextLesson.orderIndex, title: nextLesson.lessonName }
         : null,
-      streak_updated: true,
+      streak_updated: !alreadyCompleted,
       new_streak: gamification?.streakCurrent ?? 1,
+      /** dars ilgari ham yakunlangan edi — bu chaqiruv hech narsani o'zgartirmadi */
+      already_completed: alreadyCompleted,
     };
   }
 
@@ -125,32 +144,19 @@ export class ProgressService {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
 
-    let progress = await this.progressRepo.findOne({ where: { userId, lessonId } });
-    if (!progress) {
-      progress = this.progressRepo.create({
-        userId,
-        lessonId,
-        status: LessonProgressStatus.in_progress,
-        attempts: 1,
-      });
-    } else if (progress.status === LessonProgressStatus.not_started) {
-      progress.status = LessonProgressStatus.in_progress;
-    }
-    progress.timeSpentSec = (progress.timeSpentSec ?? 0) + seconds;
-    await this.progressRepo.save(progress);
+    const progress = await this.updateProgress(userId, lessonId, (p) => {
+      if (p.status === LessonProgressStatus.not_started) {
+        p.status = LessonProgressStatus.in_progress;
+      }
+      if (!p.attempts) p.attempts = 1;
+      p.timeSpentSec = (p.timeSpentSec ?? 0) + seconds;
+    });
 
-    const today = new Date().toISOString().split('T')[0];
-    let daily = await this.dailyRepo.findOne({ where: { userId, date: today } });
-    if (!daily) daily = this.dailyRepo.create({ userId, date: today, goalMinutes: 30 });
-    daily.minutesSpent += Math.round(seconds / 60);
-    await this.dailyRepo.save(daily);
-
-    let gamification = await this.gamificationRepo.findOne({ where: { userId } });
-    if (!gamification) {
-      gamification = this.gamificationRepo.create({ userId, level: 1, xpTotal: 0, xpWeekly: 0, streakCurrent: 0 });
-    }
-    gamification.lastActivityDate = today;
-    await this.gamificationRepo.save(gamification);
+    await this.bumpDaily(userId, Math.round(seconds / 60), 0);
+    // Faollik sanasi va streak — YAGONA joyda (XpService). Ilgari bu yerda
+    // faqat `lastActivityDate = today` qo'yilardi, natijada keyingi
+    // `touchActivity` "bugun allaqachon belgilangan" deb streakni oshirmasdi.
+    await this.xpService.touchActivity(userId);
 
     return { added: seconds, totalSec: progress.timeSpentSec };
   }
@@ -207,51 +213,127 @@ export class ProgressService {
     return records.map((p) => ({ lessonId: p.lessonId, userId: p.userId, score: p.score ?? 0, completedAt: p.completedAt }));
   }
 
+  /**
+   * `POST /progress` — ilova (React Native) darsni shu orqali yakunlaydi.
+   *
+   * IDEMPOTENT (qarang: `completeLesson`): ilova avto-yakunlashni takror
+   * yuborsa, allaqachon yakunlangan dars uchun hech narsa o'zgarmaydi —
+   * urinishlar, ball, kunlik "yakunlangan darslar" soni o'z joyida qoladi.
+   * Javobdagi `alreadyCompleted` ilovaga "banner ko'rsatma" deydi.
+   */
   async upsertProgress(userId: string, dto: UpsertProgressDto) {
     const lesson = await this.lessonRepo.findOne({ where: { id: dto.lessonId } });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
     await this.assertLessonAccessible(userId, dto.lessonId);
 
-    let progress = await this.progressRepo.findOne({ where: { userId, lessonId: dto.lessonId } });
-    if (!progress) {
-      progress = this.progressRepo.create({ userId, lessonId: dto.lessonId, attempts: 1 });
-    } else {
-      progress.attempts += 1;
+    const existing = await this.progressRepo.findOne({ where: { userId, lessonId: dto.lessonId } });
+
+    if (existing?.status === LessonProgressStatus.completed) {
+      await this.xpService.touchActivity(userId);
+      return {
+        lessonId: existing.lessonId,
+        userId: existing.userId,
+        score: existing.score,
+        completedAt: existing.completedAt,
+        alreadyCompleted: true,
+      };
     }
 
-    progress.status = LessonProgressStatus.completed;
-    progress.score = dto.score;
-    progress.completedAt = new Date();
-    await this.progressRepo.save(progress);
+    const progress = await this.updateProgress(userId, dto.lessonId, (p) => {
+      p.attempts = (p.attempts ?? 0) + 1;
+      p.status = LessonProgressStatus.completed;
+      p.score = dto.score;
+      p.completedAt = new Date();
+    });
 
-    const xpEarned = Math.round(10 + (dto.score / 100) * 40);
-    await this.updateGamification(userId, xpEarned, 0);
+    await this.xpService.touchActivity(userId);
+    await this.bumpDaily(userId, 0, 1);
 
-    return { lessonId: progress.lessonId, userId: progress.userId, score: progress.score, completedAt: progress.completedAt };
+    return {
+      lessonId: progress.lessonId,
+      userId: progress.userId,
+      score: progress.score,
+      completedAt: progress.completedAt,
+      alreadyCompleted: false,
+    };
   }
 
-  private async updateGamification(userId: string, xpEarned: number, timeSpentSec: number) {
-    let gamification = await this.gamificationRepo.findOne({ where: { userId } });
-    if (!gamification) {
-      gamification = this.gamificationRepo.create({ userId, level: 1, xpTotal: 0, xpWeekly: 0, streakCurrent: 0 });
-    }
-    gamification.xpTotal += xpEarned;
-    gamification.xpWeekly += xpEarned;
-    gamification.level = Math.floor(gamification.xpTotal / 100) + 1;
+  // ─── Ichki yordamchilar ────────────────────────────────────────────────────
 
+  /**
+   * MUHIM: `repository.create()` ustunlarning BAZADAGI `default` qiymatini
+   * QO'YMAYDI — berilmagan maydon `undefined` bo'lib qoladi. Shuning uchun
+   * yangi yozuvda `daily.lessonsCompleted += 1` → `undefined + 1` → `NaN`
+   * bo'lardi va INSERT `int` ustunga "NaN" yuborib, Postgres xatosi bilan
+   * tugardi (`invalid input syntax for type integer`) → ilovada 500. Ya'ni
+   * kunning BIRINCHI avto-yakunlashi har doim yiqilardi. Endi sanoqchilar
+   * ochiq 0 bilan boshlanadi.
+   */
+  private newDaily(userId: string, date: string): DailyTracking {
+    return this.dailyRepo.create({
+      userId,
+      date,
+      goalMinutes: 30,
+      minutesSpent: 0,
+      lessonsCompleted: 0,
+      vocabularyReviewed: 0,
+      listeningDone: false,
+    });
+  }
+
+  /** Bugungi kunlik hisobga vaqt (daqiqa) va yakunlangan dars sonini qo'shadi */
+  private async bumpDaily(userId: string, minutesDelta: number, lessonsDelta: number) {
     const today = new Date().toISOString().split('T')[0];
-    if (gamification.lastActivityDate !== today) {
-      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-      gamification.streakCurrent = gamification.lastActivityDate === yesterday ? gamification.streakCurrent + 1 : 1;
-      gamification.lastActivityDate = today;
-      if (gamification.streakCurrent > gamification.streakMax) gamification.streakMax = gamification.streakCurrent;
-    }
-    await this.gamificationRepo.save(gamification);
+    await this.withUniqueRetry(async () => {
+      const daily =
+        (await this.dailyRepo.findOne({ where: { userId, date: today } })) ??
+        this.newDaily(userId, today);
+      daily.minutesSpent += Number.isFinite(minutesDelta) ? minutesDelta : 0;
+      daily.lessonsCompleted += lessonsDelta;
+      return this.dailyRepo.save(daily);
+    });
+  }
 
-    let daily = await this.dailyRepo.findOne({ where: { userId, date: today } });
-    if (!daily) daily = this.dailyRepo.create({ userId, date: today, goalMinutes: 30 });
-    daily.minutesSpent += Math.round(timeSpentSec / 60);
-    daily.lessonsCompleted += 1;
-    await this.dailyRepo.save(daily);
+  /**
+   * `lesson_progress` yozuvini topib (yo'q bo'lsa — hamma maydoni to'ldirilgan
+   * holda yaratib) o'zgartiradi va saqlaydi.
+   */
+  private async updateProgress(
+    userId: string,
+    lessonId: string,
+    mutate: (p: LessonProgress) => void,
+  ): Promise<LessonProgress> {
+    return this.withUniqueRetry(async () => {
+      const progress =
+        (await this.progressRepo.findOne({ where: { userId, lessonId } })) ??
+        this.progressRepo.create({
+          userId,
+          lessonId,
+          status: LessonProgressStatus.not_started,
+          score: null,
+          timeSpentSec: 0,
+          attempts: 0,
+          completedAt: null,
+        });
+      mutate(progress);
+      return this.progressRepo.save(progress);
+    });
+  }
+
+  /**
+   * Unique konflikt (Postgres 23505) — ikki so'rov bir vaqtda BIR XIL yangi
+   * yozuvni yaratmoqchi bo'lgan hol. Avto-yakunlashda bu odatiy: ilova
+   * yakunlash bilan birga "sarflangan vaqt"ni ham yuboradi. Konfliktdan keyin
+   * qayta o'qib bir marta takrorlanadi — ikkinchi urinish endi mavjud yozuv
+   * ustiga yozadi.
+   */
+  private async withUniqueRetry<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      const code = (e as any)?.code ?? (e as any)?.driverError?.code;
+      if (code !== '23505') throw e;
+      return fn();
+    }
   }
 }

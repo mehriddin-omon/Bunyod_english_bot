@@ -10,6 +10,10 @@ export class UpdateLessonDto {
   orderIndex?: number;
 
   @IsOptional()
+  @IsNumber()
+  unitNumber?: number | null;
+
+  @IsOptional()
   @IsString()
   cefrLevel?: string | null;
 

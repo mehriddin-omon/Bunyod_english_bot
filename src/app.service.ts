@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { networkInterfaces } from 'os';
 import { ensureQuizEnum } from './database/ensure-quiz-enum';
 import { ensureStudentAnswersMigrated } from './database/ensure-student-answers';
 import { ensureExercisesUnified } from './database/ensure-exercises-unified';
@@ -58,11 +59,23 @@ export default class Application {
         validationError: { target: false, value: false },
       }),
     );
-    await app   
-      .listen(port, () => {
+    // '0.0.0.0' — barcha tarmoq interfeyslarini tinglaydi, ya'ni backendga
+    // faqat localhost emas, LAN IP (masalan http://10.182.47.196:2003) orqali
+    // ham ulanish mumkin. Haqiqiy telefonda Expo Go bilan test qilish uchun kerak.
+    await app
+      .listen(port, '0.0.0.0', () => {
         Application.logger.log(
           `Application is running on: http://localhost:${port}/${apiPrefix}`,
         );
+        for (const iface of Object.values(networkInterfaces())) {
+          for (const info of iface ?? []) {
+            if (info.family === 'IPv4' && !info.internal) {
+              Application.logger.log(
+                `LAN (telefon uchun):       http://${info.address}:${port}/${apiPrefix}`,
+              );
+            }
+          }
+        }
       })
       .catch((error) => {
         Application.logger.error(

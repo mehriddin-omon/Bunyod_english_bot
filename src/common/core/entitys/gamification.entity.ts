@@ -62,6 +62,22 @@ export class XpTransaction extends BaseEntity {
 
   @Column({ type: 'uuid', name: 'reference_id', nullable: true })
   referenceId: string;
+
+  /**
+   * XP manbasining MATNLI identifikatori — "bu mukofot allaqachon berilganmi"
+   * degan savolga shu ustun javob beradi.
+   *
+   * `reference_id` uuid bo'lgani uchun statik mashq kalitini ("lesson1:grammar:ex1")
+   * u yerga sig'dirib bo'lmaydi. Bazada `(user_id, source, reference_key)` bo'yicha
+   * QISMAN UNIQUE indeks turadi (reference_key IS NOT NULL bo'lganda) — ya'ni bir
+   * manba uchun XP faqat BIR MARTA yoziladi. Offline navbat bir natijani ikki
+   * marta yuborsa ham, dars ikki marta yakunlansa ham ikkinchi yozuv INSERT
+   * bosqichida jim tashlab yuboriladi (ON CONFLICT DO NOTHING).
+   *
+   * Namunalar:  "lesson1:grammar:ex1"  ·  "lesson:<uuid>"  ·  "vocab:<pairId>"
+   */
+  @Column({ type: 'varchar', length: 160, name: 'reference_key', nullable: true })
+  referenceKey: string | null;
 }
 
 @Entity({ name: 'user_skills' })

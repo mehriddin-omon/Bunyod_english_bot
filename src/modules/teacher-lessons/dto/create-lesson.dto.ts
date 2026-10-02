@@ -9,6 +9,10 @@ export class CreateLessonDto {
   orderIndex?: number;
 
   @IsOptional()
+  @IsNumber()
+  unitNumber?: number;
+
+  @IsOptional()
   @IsString()
   cefrLevel?: string | null;
 

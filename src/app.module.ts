@@ -17,9 +17,11 @@ import { GamificationModule } from './modules/gamification/gamification.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { LessonsModule } from './modules/lessons/lessons.module';
 import { TeacherLessonsModule } from './modules/teacher-lessons/teacher-lessons.module';
+import { TeacherStudentsModule } from './modules/teacher-students/teacher-students.module';
 import { SectionsModule } from './modules/sections/sections.module';
 import { HomeModule } from './modules/home/home.module';
 import { UploadModule } from './modules/upload/upload.module';
+import { ExerciseResultsModule } from './modules/exercise-results/exercise-results.module';
 
 @Module({
   imports: [
@@ -34,6 +36,21 @@ import { UploadModule } from './modules/upload/upload.module';
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         synchronize: configService.get<string>('NODE_ENV') === 'development',
         retryAttempts: 3,
+        // 400-500 bir vaqtdagi foydalanuvchida so'rovlar navbatga tiqilib
+        // qolmasligi uchun pg pool sozlamalari. Standart pg pool max=10 —
+        // yuqori concurrency'da bu "qotib qolish"ning asosiy sababi edi.
+        extra: {
+          max: Number(configService.get<string>('DB_POOL_MAX')) || 30,
+          min: Number(configService.get<string>('DB_POOL_MIN')) || 5,
+          // bo'sh turgan connection qancha vaqtdan keyin yopiladi
+          idleTimeoutMillis: Number(configService.get<string>('DB_POOL_IDLE_MS')) || 30000,
+          // pooldan connection ololmasa qancha kutib xato qaytaradi
+          // (cheksiz osilib qolish o'rniga so'rov tezda xato bilan tugaydi)
+          connectionTimeoutMillis: Number(configService.get<string>('DB_POOL_CONN_TIMEOUT_MS')) || 5000,
+        },
+        // yakka bir so'rov DB'ni band qilib qo'yib pool'ni tiqilib qolishiga
+        // sabab bo'lmasligi uchun statement bo'yicha maksimal vaqt
+        maxQueryExecutionTime: 5000,
       }),
     }),
 
@@ -52,9 +69,11 @@ import { UploadModule } from './modules/upload/upload.module';
     NotificationsModule,
     LessonsModule,
     TeacherLessonsModule,
+    TeacherStudentsModule,
     SectionsModule,
     HomeModule,
     UploadModule,
+    ExerciseResultsModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: ResponseTransformInterceptor },

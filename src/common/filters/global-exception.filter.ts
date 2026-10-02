@@ -36,6 +36,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       } else if (pg.code === '23503') {
         statusCode = HttpStatus.BAD_REQUEST;
         message = 'Bog\'liq yozuv topilmadi';
+      } else {
+        // Ma'lum bo'lmagan baza xatosi 500 bo'lib ketadi — ILGARI u hech
+        // qayerga yozilmasdi, natijada ilovada "500" ko'rinardi-yu serverda
+        // izi qolmasdi (masalan int ustunga NaN yozilgani). Endi log bor.
+        this.logger.error(
+          `${request.method} ${request.url} — DB xatosi [${pg.code}]: ${pg.message}`,
+          (exception as Error).stack,
+        );
       }
     } else if (exception instanceof Error) {
       this.logger.error(`${request.method} ${request.url}`, exception.stack);

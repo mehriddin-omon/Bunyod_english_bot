@@ -23,10 +23,10 @@ export class LessonsController {
 
   /** GET /lessons?unit_number=1  — React Native ilova uchun */
   @Get()
-  async getPublished(@Query('unit_number') unitNumber: string) {
+  async getPublished(@Query('unit_number') unitNumber: string, @Req() req: any) {
     const num = Number(unitNumber);
     if (isNaN(num) || num < 1) return [];
-    return this.lessonsService.getPublishedByUnit(num);
+    return this.lessonsService.getPublishedByUnit(num, req.user?.sub);
   }
 
   /** GET /lessons/units */

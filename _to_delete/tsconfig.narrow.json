@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false, "composite": false, "noEmit": true, "skipLibCheck": true },
+  "files": ["src/modules/home/home.module.ts", "src/modules/lessons/lessons.module.ts"]
+}

@@ -111,6 +111,7 @@ export class GroupService {
       return {
         id: group.id,
         name: group.name,
+        description: group.description ?? null,
         color: group.color,
         status: group.status,
         studentCount: group.members.length,
@@ -120,6 +121,9 @@ export class GroupService {
         schedule: scheduleMap.get(group.id) ?? [],
         progress,
         avgScore,
+        // Guruhlar ro'yxatidagi "Auto-advance" belgisi shu maydonlarga tayanadi
+        autoAdvanceEnabled: group.autoAdvanceEnabled,
+        manualLessonCeiling: group.manualLessonCeiling ?? null,
       };
     });
   }

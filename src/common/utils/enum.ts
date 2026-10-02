@@ -89,7 +89,20 @@ export enum League {
 
 export enum XpSource {
   lesson_complete = 'lesson_complete',
+  /** Statik mashq birinchi marta ishlangani uchun (1 to'g'ri javob = 1 coin) */
+  exercise_complete = 'exercise_complete',
+  /**
+   * ESKI qoida: so'z birinchi marta to'g'ri aytilgani uchun (1 so'z = 1 coin).
+   * Endi tayyorlov rejimlari coin bermaydi — manba faqat eski yozuvlar uchun qoldi.
+   */
+  vocabulary_word = 'vocabulary_word',
   vocabulary_mastered = 'vocabulary_mastered',
+  /**
+   * Lug'at COINLI SINOVI (dars lug'ati bo'yicha, 10 s taymerli variantli test).
+   * `reference_id` = dars idsi; `reference_key` = `vtest:<testId>:words|bonus|penalty`.
+   * Jarima (60% dan past) MANFIY amount bilan shu manbada yoziladi.
+   */
+  vocabulary_test = 'vocabulary_test',
   streak_bonus = 'streak_bonus',
   challenge_bonus = 'challenge_bonus',
   assignment_bonus = 'assignment_bonus',

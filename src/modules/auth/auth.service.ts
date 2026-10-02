@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -70,6 +71,11 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(dto.password, user.password);
     if (!isPasswordValid) throw new UnauthorizedException("Noto'g'ri login yoki parol");
 
+    // Kirish holati o'chirilgan bo'lsa parol to'g'ri bo'lsa ham kiritilmaydi
+    if (user.isActive === false) {
+      throw new ForbiddenException("Hisobingiz bloklangan. O'qituvchingizga murojaat qiling.");
+    }
+
     const payload = { sub: user.id, username: user.username, role: user.role };
     const accessToken = this.tokenService.createAccessToken(payload);
     const refreshToken = this.tokenService.createRefreshToken(payload);
@@ -87,6 +93,11 @@ export class AuthService {
 
     const isValid = await bcrypt.compare(refreshToken, user.refreshToken);
     if (!isValid) throw new UnauthorizedException("Token noto'g'ri");
+
+    // Bloklangan foydalanuvchi eski token bilan sessiyani uzaytira olmaydi
+    if (user.isActive === false) {
+      throw new ForbiddenException('Hisobingiz bloklangan');
+    }
 
     return {
       accessToken: this.tokenService.createAccessToken({

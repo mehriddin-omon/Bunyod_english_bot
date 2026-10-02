@@ -17,4 +17,16 @@ export class VocabularySession extends BaseEntity {
 
   @Column({ type: 'int', name: 'time_spent_sec', default: 0 })
   timeSpentSec: number;
+
+  /** Bosqichli sessiya bo'lsa — qaysi dars lug'ati (aks holda null) */
+  @Column({ type: 'uuid', name: 'lesson_id', nullable: true })
+  lessonId: string | null;
+
+  /** Lug'at bosqichi (1..4); filtr bo'yicha oddiy takrorlashda null */
+  @Column({ type: 'smallint', name: 'stage', nullable: true })
+  stage: number | null;
+
+  /** Sessiyada nechta karta berilgan — bosqich foizi shunga nisbatan hisoblanadi */
+  @Column({ type: 'int', name: 'total_cards', default: 0 })
+  totalCards: number;
 }

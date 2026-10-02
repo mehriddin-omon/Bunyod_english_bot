@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, Request, UseGuards } from '@nestjs/common';
 import { MonitoringService } from './monitoring.service';
 import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guard/roles.guard';
@@ -22,9 +22,10 @@ export class MonitoringController {
 
   /** GET /monitoring/students/:studentId */
   @Get('students/:studentId')
-  @Roles(Role.teacher, Role.admin)
-  async getStudentMonitoring(@Param('studentId') studentId: string) {
-    return this.monitoringService.getStudentMonitoring(studentId);
+  @Roles(Role.teacher, Role.subTeacher, Role.admin, Role.superAdmin)
+  async getStudentMonitoring(@Param('studentId') studentId: string, @Request() req: any) {
+    // Teacher faqat o'z guruhidagi o'quvchini ko'radi — tekshiruv servisda
+    return this.monitoringService.getStudentMonitoring(studentId, req.user);
   }
 
   /** GET /monitoring/assignments/:assignmentId/status-breakdown */

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull } from 'typeorm';
 import { Vocabulary } from 'src/common/core/entitys/vocabulary.entity';
@@ -8,22 +8,77 @@ import { UserVocabularyProgress } from 'src/common/core/entitys/user-vocabulary-
 import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { VocabularyPracticeLog, PracticeMode } from 'src/common/core/entitys/vocabulary-practice-log.entity';
 import { VocabularySession } from 'src/common/core/entitys/vocabulary-session.entity';
+import { VocabularyStageProgress } from 'src/common/core/entitys/vocabulary-stage-progress.entity';
 import { TtsService } from './tts.service';
 import { VocabStatus } from 'src/common/core/entitys/user-vocabulary-progress.entity';
 import { SessionFilter, SessionMode } from './dto';
+import { XpService } from '../gamification/xp.service';
 
 // ── SRS constants ─────────────────────────────────────────────────────────────
-const MASTERED_MIN_ATTEMPTS   = 5;
-const MASTERED_MAX_ERROR_RATE = 0.2;
 const OVERDUE_MS              = 14 * 86_400_000;
 const REVIEW_MS_GOOD          = 7 * 86_400_000;
 const REVIEW_MS_OK            = 3 * 86_400_000;
 const REVIEW_MS_FAIL          = 1 * 86_400_000;
 
-function computeVocabStatus(attempts: number, errorRate: number): VocabStatus {
-  return attempts >= MASTERED_MIN_ATTEMPTS && errorRate < MASTERED_MAX_ERROR_RATE
-    ? VocabStatus.mastered
-    : VocabStatus.learning;
+/**
+ * TAYYORLOV rejimlaridan keyingi holat.
+ *
+ * Qoida (2026-09): so'z "mustahkam" (mastered) holatiga FAQAT coinli sinov
+ * orqali o'tadi (`VocabularyCoinTestService`). Tayyorlov rejimlari (flashcard,
+ * variantli, yozib, audio, aralash) so'zni faqat `new → learning` ga o'tkazadi;
+ * allaqachon mustahkam bo'lgan so'z esa tayyorlovda tushirilmaydi ham.
+ *
+ * Eski qoida (5 urinish, xato < 20% → mastered) bekor qilindi —
+ * MASTERED_MIN_ATTEMPTS / MASTERED_MAX_ERROR_RATE endi ishlatilmaydi.
+ */
+/**
+ * LUG'AT BOSQICHLARI (2026-09 qarori).
+ *
+ * Rejim tanlash (flashcard / variantli / yozib / audio / aralash) olib
+ * tashlandi. Dars lug'ati 4 ta KETMA-KET bosqichda yodlanadi; har bosqich
+ * dars lug'atidagi HAMMA so'zni so'raydi. Keyingi bosqich oldingisi
+ * o'tilgandan keyin ochiladi (qulf serverda tekshiriladi):
+ *   1 — oddiy karta:      oxirigacha ko'rib chiqilsa o'tildi (passPercent 0)
+ *   2 — variantli test:   80%+
+ *   3 — eshitib topish:   80%+ (talaffuzi yo'q so'z variantliga tushadi)
+ *   4 — yozib yodlash:    80%+
+ *
+ * Bosqichlar TAYYORLOV — coin bermaydi. Coin faqat "Coinli sinov"da.
+ */
+export const VOCAB_STAGES: { stage: number; mode: PracticeMode; passPercent: number }[] = [
+  { stage: 1, mode: 'flashcard',       passPercent: 0 },
+  { stage: 2, mode: 'multiple_choice', passPercent: 80 },
+  { stage: 3, mode: 'audio',           passPercent: 80 },
+  { stage: 4, mode: 'typing',          passPercent: 80 },
+];
+
+/** "new,learning" → ['new','learning'] (noma'lum qiymatlar tashlanadi) */
+function parseStatuses(raw?: string): VocabStatus[] {
+  if (!raw) return [];
+  const valid = new Set<string>(Object.values(VocabStatus));
+  return [...new Set(raw.split(',').map((x) => x.trim()).filter((x) => valid.has(x)))] as VocabStatus[];
+}
+
+/**
+ * Tavsiya etilgan to'plam qoidasi — `getStudentStats` va `startSession`
+ * dagi SQL bilan bir xil bo'lishi SHART (son, ro'yxat, test mos kelsin).
+ */
+function matchesPreset(
+  preset: SessionFilter,
+  prog: { attempts: number; wrongAttempts: number; nextReviewAt: Date | null; status: VocabStatus } | undefined,
+  nowMs: number,
+): boolean {
+  switch (preset) {
+    case 'new':     return !prog || prog.status === VocabStatus.new;
+    case 'today':   return !!prog?.nextReviewAt && prog.nextReviewAt.getTime() <= nowMs;
+    case 'overdue': return !!prog?.nextReviewAt && nowMs - prog.nextReviewAt.getTime() > OVERDUE_MS;
+    case 'hard':    return !!prog && prog.attempts > 0 && prog.wrongAttempts > prog.attempts / 2;
+    default:        return true;
+  }
+}
+
+function computeVocabStatus(current: VocabStatus | undefined): VocabStatus {
+  return current === VocabStatus.mastered ? VocabStatus.mastered : VocabStatus.learning;
 }
 
 @Injectable()
@@ -47,10 +102,16 @@ export class VocabularyService {
     @InjectRepository(VocabularySession)
     private readonly sessionRepo: Repository<VocabularySession>,
 
+    @InjectRepository(VocabularyStageProgress)
+    private readonly stageRepo: Repository<VocabularyStageProgress>,
+
     @InjectRepository(Lesson)
     private readonly lessonRepo: Repository<Lesson>,
 
     private readonly ttsService: TtsService,
+
+    // Coin berish faqat shu servis orqali — daftarga yozilmagan XP yo'q
+    private readonly xpService: XpService,
   ) {}
 
   // ─── Teacher: word / pair CRUD ──────────────────────────────────────────────
@@ -315,13 +376,39 @@ export class VocabularyService {
 
   // ─── Student: vocabulary list ───────────────────────────────────────────────
 
-  async getStudentVocabulary(userId: string, filters: { lessonId?: string; status?: string }) {
+  /**
+   * Talabaning lug'at ro'yxati (Lug'at → Asosiy, filtr bilan).
+   *
+   * Filtrlar (hammasi ixtiyoriy, birga ishlaydi):
+   *   - `lessonId`  — bitta mavzu (dars);
+   *   - `sectionId` — butun bo'lim (unit) darslari; `lessonId` bo'lsa e'tiborsiz;
+   *   - `status`    — vergul bilan bir nechta: "new,learning";
+   *   - `preset`    — tavsiya etilgan to'plam (hard/overdue/today/new). Qoidalar
+   *                   `getStudentStats` va `startSession` bilan AYNAN bir xil —
+   *                   filtr oynasidagi son, ro'yxat va test bir-biriga mos kelsin.
+   */
+  async getStudentVocabulary(userId: string, filters: {
+    lessonId?: string;
+    sectionId?: string;
+    status?: string;
+    preset?: string;
+  }) {
+    const empty = { pairs: [], stats: { total: 0, mastered: 0, learning: 0, new: 0, hard: 0, dueToday: 0, overdue: 0 } };
     const where: any = { lang: 'en' };
-    if (filters.lessonId) where.lessonId = filters.lessonId;
+    if (filters.lessonId) {
+      where.lessonId = filters.lessonId;
+    } else if (filters.sectionId) {
+      // Bo'lim id si dars id si emas — avval bo'lim darslari olinadi
+      const lessons = await this.lessonRepo.find({ where: { unitId: filters.sectionId }, select: { id: true } });
+      if (!lessons.length) return empty;
+      where.lessonId = In(lessons.map((l) => l.id));
+    }
+    const statuses = parseStatuses(filters.status);
+    const preset   = filters.preset as SessionFilter | undefined;
 
     const words = await this.wordRepo.find({ where, order: { orderIndex: 'ASC' } });
     const wordIds = words.map((w) => w.id);
-    if (!wordIds.length) return { pairs: [], stats: { total: 0, mastered: 0, learning: 0, new: 0, hard: 0, dueToday: 0 } };
+    if (!wordIds.length) return empty;
 
     const pairs = await this.pairRepo
       .createQueryBuilder('r')
@@ -336,6 +423,7 @@ export class VocabularyService {
 
     // Build lesson order map only when needed (no lessonId filter = multiple lessons)
     const lessonOrderMap = new Map<string, number>();
+    const nowMs = now.getTime();
     if (!filters.lessonId) {
       const lessonIds = [...new Set(words.map((w) => w.lessonId).filter((id): id is string => !!id))];
       if (lessonIds.length) {
@@ -354,9 +442,10 @@ export class VocabularyService {
 
     const result = pairs
       .filter((pair) => {
-        const status = progressMap.get(pair.id)?.status ?? VocabStatus.new;
-        if (filters.status && filters.status !== status) return false;
-        const prog = progressMap.get(pair.id);
+        const prog   = progressMap.get(pair.id);
+        const status = prog?.status ?? VocabStatus.new;
+        if (statuses.length && !statuses.includes(status)) return false;
+        if (preset && !matchesPreset(preset, prog, nowMs)) return false;
         const meta = wordMetaMap.get(pair.vocabularyId);
         sortKeys.set(pair.id, {
           status,
@@ -426,6 +515,7 @@ export class VocabularyService {
       new:      result.filter((p) => p.status === VocabStatus.new).length,
       hard:     result.filter((p) => p.wrongAttempts > p.attempts / 2 && p.attempts > 0).length,
       dueToday: result.filter((p) => p.isDueToday).length,
+      overdue:  result.filter((p) => !!p.nextReviewAt && nowMs - p.nextReviewAt.getTime() > OVERDUE_MS).length,
     };
 
     return { pairs: result, stats };
@@ -434,8 +524,14 @@ export class VocabularyService {
   // ─── Student: dashboard stats ───────────────────────────────────────────────
 
   async getStudentStats(userId: string) {
+    // Faqat inglizcha so'z juftlari — ro'yxat (`getStudentVocabulary`) ham
+    // aynan shularni ko'rsatadi, filtr kartasidagi son ro'yxat bilan mos kelsin
     const [total, progressList] = await Promise.all([
-      this.pairRepo.count(),
+      this.pairRepo
+        .createQueryBuilder('r')
+        .innerJoin('r.vocabulary', 'src')
+        .where('src.lang = :lang', { lang: 'en' })
+        .getCount(),
       this.progressRepo.find({ where: { userId } }),
     ]);
 
@@ -547,12 +643,34 @@ export class VocabularyService {
 
   async startSession(userId: string, params: {
     filter: SessionFilter;
-    mode: SessionMode;
+    mode?: SessionMode;
+    stage?: number;
     lessonId?: string;
+    sectionId?: string;
     status?: string;
     limit?: number;
   }) {
-    const limit = Math.min(params.limit ?? 20, 50);
+    // ── Bosqichli sessiya: tur bosqichdan, so'zlar — dars lug'ati to'liq ────
+    const stageDef = params.stage ? VOCAB_STAGES.find((st) => st.stage === params.stage) : undefined;
+    if (params.stage && !stageDef) throw new BadRequestException("Noto'g'ri bosqich");
+    if (stageDef) {
+      if (!params.lessonId) throw new BadRequestException('Bosqich uchun lessonId kerak');
+      if (stageDef.stage > 1) {
+        const prev = await this.stageRepo.findOne({
+          where: { userId, lessonId: params.lessonId, stage: stageDef.stage - 1 },
+        });
+        if (!prev?.passed) {
+          throw new ForbiddenException(`Avval ${stageDef.stage - 1}-bosqichni o'ting`);
+        }
+      }
+      params = { ...params, mode: stageDef.mode, filter: 'custom', status: undefined, sectionId: undefined, limit: 200 };
+    }
+    if (!params.mode) throw new BadRequestException('Rejim (mode) yoki bosqich (stage) kerak');
+    const mode: SessionMode = params.mode;
+
+    // 50 lik chegara darsdagi so'zlar sonidan kichik bo'lib qolardi (70 ta
+    // so'zli darsda sessiya umuman boshlanmasdi) — endi 200 tagacha
+    const limit = Math.min(params.limit ?? 20, 200);
     const now   = new Date();
     const overdueCutoff = new Date(now.getTime() - OVERDUE_MS);
 
@@ -571,11 +689,16 @@ export class VocabularyService {
 
     if (params.lessonId) {
       idQb.andWhere('src.lesson_id = :lessonId', { lessonId: params.lessonId });
+    } else if (params.sectionId) {
+      // Bo'lim (unit) bo'yicha — bo'limdagi hamma darslar lug'ati
+      idQb.andWhere('src.lesson_id IN (SELECT l.id FROM lessons l WHERE l.unit_id = :sectionId)', {
+        sectionId: params.sectionId,
+      });
     }
 
     switch (params.filter) {
       case 'new':
-        idQb.andWhere('uvp.id IS NULL');
+        idQb.andWhere("(uvp.id IS NULL OR uvp.status = 'new')");
         break;
       case 'today':
         idQb.andWhere('uvp.next_review_at IS NOT NULL AND uvp.next_review_at <= :now', { now });
@@ -586,15 +709,18 @@ export class VocabularyService {
       case 'overdue':
         idQb.andWhere('uvp.next_review_at < :cutoff', { cutoff: overdueCutoff });
         break;
-      case 'custom':
-        if (params.status) {
-          if (params.status === VocabStatus.new) {
-            idQb.andWhere('uvp.id IS NULL');
-          } else {
-            idQb.andWhere('uvp.status = :status', { status: params.status });
-          }
+      case 'custom': {
+        // Bir nechta status (vergul bilan): "new,learning"
+        const statuses = parseStatuses(params.status);
+        if (statuses.length) {
+          const others = statuses.filter((st) => st !== VocabStatus.new);
+          const conds: string[] = [];
+          if (statuses.includes(VocabStatus.new)) conds.push("uvp.id IS NULL OR uvp.status = 'new'");
+          if (others.length) conds.push('uvp.status IN (:...statuses)');
+          idQb.andWhere(`(${conds.join(' OR ')})`, { statuses: others });
         }
         break;
+      }
     }
 
     const rawIds: { id: string }[] = await idQb.orderBy('RANDOM()').limit(limit).getRawMany();
@@ -638,15 +764,11 @@ export class VocabularyService {
     }
     const distractorPool = distractors.map((d) => d.word);
 
-    const MODES: SessionMode[] = ['flashcard', 'multiple_choice', 'typing', 'audio'];
-
     const cards = pairs.map((pair) => {
       const prog     = progressMap.get(pair.id);
       const hasAudio = !!pair.vocabulary.voiceFileId;
 
-      let cardMode = params.mode === 'mixed'
-        ? MODES[Math.floor(Math.random() * MODES.length)]
-        : params.mode;
+      let cardMode: SessionMode = mode;
 
       // audio modeni faqat audio fayli bor so'zlar uchun ishlatish
       if (cardMode === 'audio' && !hasAudio) {
@@ -687,10 +809,17 @@ export class VocabularyService {
     });
 
     const session = await this.sessionRepo.save(
-      this.sessionRepo.create({ userId, completedCount: 0, timeSpentSec: 0 }),
+      this.sessionRepo.create({
+        userId,
+        completedCount: 0,
+        timeSpentSec:   0,
+        lessonId:       stageDef ? params.lessonId! : null,
+        stage:          stageDef?.stage ?? null,
+        totalCards:     cards.length,
+      }),
     );
 
-    return { sessionId: session.id, totalCards: cards.length, cards };
+    return { sessionId: session.id, stage: stageDef?.stage ?? null, totalCards: cards.length, cards };
   }
 
   // ─── Internal: batch-process answers (used by submitSession + reviewPair) ───
@@ -715,9 +844,7 @@ export class VocabularyService {
     const updatedPairs: VocabularyRelation[]        = [];
     const newLogs: VocabularyPracticeLog[]          = [];
 
-    let totalXp    = 0;
-    let correct    = 0;
-    let masteredNew = 0;
+    let correct = 0;
 
     for (const ans of answers) {
       const pair = pairMap.get(ans.pairId);
@@ -736,9 +863,8 @@ export class VocabularyService {
       const errorRate = progress.wrongAttempts / progress.attempts;
       progress.nextReviewAt = new Date(Date.now() + (ans.correct ? (errorRate < 0.2 ? REVIEW_MS_GOOD : REVIEW_MS_OK) : REVIEW_MS_FAIL));
 
-      const wasMastered = progress.status === VocabStatus.mastered;
-      progress.status   = computeVocabStatus(progress.attempts, errorRate);
-      if (progress.status === VocabStatus.mastered && !wasMastered) masteredNew++;
+      // Tayyorlov: faqat new → learning. Mustahkam holat coinli sinovda beriladi.
+      progress.status = computeVocabStatus(progress.status);
 
       pair.attempts     += 1;
       if (!ans.correct) pair.wrongAttempts += 1;
@@ -753,7 +879,7 @@ export class VocabularyService {
         correct:   ans.correct,
       }));
 
-      if (ans.correct) { correct++; totalXp += 10; } else { totalXp += 3; }
+      if (ans.correct) correct++;
     }
 
     // Batch save — 3 queries instead of 5N
@@ -763,7 +889,21 @@ export class VocabularyService {
       this.logRepo.save(newLogs),
     ]);
 
-    return { totalCards: answers.length, correct, wrong: answers.length - correct, xpEarned: totalXp, masteredNew, updatedProgress };
+    /**
+     * TAYYORLOV REJIMLARI COIN BERMAYDI (2026-09 qarori).
+     *
+     * Lug'at coini faqat COINLI SINOVDA beriladi (`VocabularyCoinTestService`):
+     * dars lug'atidagi hamma so'z 10 soniyalik taymer bilan so'raladi, coin
+     * urinish raqami va foizga qarab hisoblanadi. Flashcard / variantli / yozib
+     * / audio / aralash — sinovga tayyorlanish uchun; ular so'zni faqat
+     * "o'rganilmoqda" holatiga o'tkazadi. Shu sababli `xpEarned` = 0 va
+     * `masteredNew` = 0 — ilova natija ekranida buni izoh bilan ko'rsatadi.
+     *
+     * Faollik esa qayd etiladi — streak uzilmasin.
+     */
+    if (answers.length) await this.xpService.touchActivity(userId);
+
+    return { totalCards: answers.length, correct, wrong: answers.length - correct, xpEarned: 0, masteredNew: 0, updatedProgress };
   }
 
   // ─── Student: submit session answers ────────────────────────────────────────
@@ -774,13 +914,114 @@ export class VocabularyService {
     sessionId?: string,
     timeSpentSec?: number,
   ) {
+    // Sessiya submitdan OLDIN o'qiladi: completedCount > 0 bo'lsa bu takroriy
+    // yuborish — bosqich urinishi ikki marta sanalmasin
+    const session = sessionId
+      ? await this.sessionRepo.findOne({ where: { id: sessionId, userId } })
+      : null;
+
     const { totalCards, correct, wrong, xpEarned, masteredNew } = await this._processAnswers(userId, answers, sessionId);
 
     if (sessionId) {
       await this.sessionRepo.update({ id: sessionId, userId }, { completedCount: answers.length, timeSpentSec: timeSpentSec ?? 0 });
     }
 
-    return { totalCards, correct, wrong, xpEarned, masteredNew };
+    const stage = session?.stage && session.lessonId && session.completedCount === 0
+      ? await this._recordStageResult(userId, session, answers)
+      : null;
+
+    return { totalCards, correct, wrong, xpEarned, masteredNew, stage };
+  }
+
+  // ─── Student: lug'at bosqichlari ────────────────────────────────────────────
+
+  /**
+   * Bosqich natijasini yozadi. Foiz server tomonda sessiyada berilgan
+   * kartalar soniga (`session.totalCards`) nisbatan hisoblanadi — so'z bo'yicha
+   * oxirgi javob olinadi, bir so'zni takror yuborib foizni oshirib bo'lmaydi.
+   */
+  private async _recordStageResult(
+    userId: string,
+    session: VocabularySession,
+    answers: { pairId: string; correct: boolean }[],
+  ) {
+    const def = VOCAB_STAGES.find((st) => st.stage === session.stage);
+    if (!def || !session.lessonId) return null;
+
+    const byPair = new Map<string, boolean>();
+    for (const a of answers) byPair.set(a.pairId, a.correct);
+    const total      = Math.max(session.totalCards, 1);
+    const answered   = Math.min(byPair.size, total);
+    const correctCnt = [...byPair.values()].filter(Boolean).length;
+    const percent    = Math.min(100, Math.round((correctCnt / total) * 100));
+    const completed  = answered >= total;
+    const passedNow  = completed && percent >= def.passPercent;
+
+    let row = await this.stageRepo.findOne({
+      where: { userId, lessonId: session.lessonId, stage: def.stage },
+    });
+    if (!row) {
+      row = this.stageRepo.create({
+        userId, lessonId: session.lessonId, stage: def.stage,
+        attempts: 0, lastPercent: 0, bestPercent: 0, passed: false, passedAt: null,
+      });
+    }
+    const wasPassed = row.passed;
+    row.attempts   += 1;
+    row.lastPercent = percent;
+    row.bestPercent = Math.max(row.bestPercent, percent);
+    if (passedNow && !row.passed) {
+      row.passed   = true;
+      row.passedAt = new Date();
+    }
+    await this.stageRepo.save(row);
+
+    const next = VOCAB_STAGES.find((st) => st.stage === def.stage + 1);
+    return {
+      stage:       def.stage,
+      mode:        def.mode,
+      passPercent: def.passPercent,
+      percent,
+      completed,
+      passed:      row.passed,
+      justPassed:  row.passed && !wasPassed,
+      nextStage:   next && row.passed ? next.stage : null,
+    };
+  }
+
+  /** GET /vocabulary/stages?lessonId= — bosqichlar holati (qulf, foiz, o'tildi) */
+  async getStages(userId: string, lessonId: string) {
+    const [rows, totalWords] = await Promise.all([
+      this.stageRepo.find({ where: { userId, lessonId } }),
+      this.pairRepo
+        .createQueryBuilder('r')
+        .innerJoin('r.vocabulary', 'src')
+        .where('src.lessonId = :lessonId', { lessonId })
+        .andWhere('src.lang = :lang', { lang: 'en' })
+        .getCount(),
+    ]);
+    const byStage = new Map(rows.map((r) => [r.stage, r]));
+
+    let prevPassed = true;
+    const stages = VOCAB_STAGES.map((def) => {
+      const row      = byStage.get(def.stage);
+      const unlocked = prevPassed;
+      prevPassed     = !!row?.passed;
+      return {
+        stage:       def.stage,
+        mode:        def.mode,
+        passPercent: def.passPercent,
+        unlocked,
+        passed:      !!row?.passed,
+        attempts:    row?.attempts ?? 0,
+        lastPercent: row?.lastPercent ?? null,
+        bestPercent: row?.bestPercent ?? null,
+      };
+    });
+
+    // Joriy bosqich — birinchi o'tilmagan ochiq bosqich (hammasi o'tilgan bo'lsa null)
+    const current = stages.find((st) => st.unlocked && !st.passed)?.stage ?? null;
+    return { lessonId, totalWords, currentStage: current, allPassed: current === null, stages };
   }
 
   // ─── Student: review single pair (SRS) ──────────────────────────────────────

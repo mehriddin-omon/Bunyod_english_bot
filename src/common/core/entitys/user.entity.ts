@@ -41,6 +41,14 @@ export class User extends BaseEntity {
   @Column({ type: 'uuid', name: 'created_by', nullable: true })
   createdBy: string | null;
 
+  /**
+   * Tizimga kira olish holati. false bo'lsa login qilib bo'lmaydi.
+   * O'qituvchi "O'quvchilarim" bo'limidan bloklaydi/ochadi.
+   * DIQQAT: bu faollik (oxirgi kirish vaqti) emas — u Nazorat bo'limida.
+   */
+  @Column({ type: 'boolean', name: 'is_active', default: true })
+  isActive: boolean;
+
   @Column({ type: 'text', name: 'refresh_token', nullable: true })
   refreshToken: string | null;
 

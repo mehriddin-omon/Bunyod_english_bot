@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/utils/enum';
 import { GroupService } from './group.service';
+import { GroupPanelsService } from './group-panels.service';
 import {
   CreateGroupDto,
   UpdateGroupDto,
@@ -17,7 +18,10 @@ import {
 @Controller('groups')
 @UseGuards(GuardService, RolesGuard)
 export class GroupController {
-  constructor(private readonly groupService: GroupService) {}
+  constructor(
+    private readonly groupService: GroupService,
+    private readonly panels: GroupPanelsService,
+  ) {}
 
   @Get()
   @Roles(Role.admin, Role.teacher)
@@ -36,6 +40,51 @@ export class GroupController {
   async getGroupById(@Param('id') id: string) {
     return this.groupService.getGroupById(id);
   }
+
+  // ── Guruhni boshqarish sahifasi panellari ─────────────────────────────────
+  // Har biri alohida so'rov: bitta sekin panel butun sahifani bloklamaydi.
+
+  /** Sarlavha + KPI kartochkalari (davomat, o'rtacha ball, faollik, ...) */
+  @Get(':id/overview')
+  @Roles(Role.admin, Role.teacher, Role.subTeacher)
+  async getOverview(@Param('id') id: string, @Request() req) {
+    return this.panels.getOverview(id, req.user.sub, req.user.role);
+  }
+
+  /** O'quvchilar ko'rsatkichlari jadvali (progress, ball, davomat, XP) */
+  @Get(':id/students-metrics')
+  @Roles(Role.admin, Role.teacher, Role.subTeacher)
+  async getStudentMetrics(@Param('id') id: string, @Request() req) {
+    return this.panels.getStudents(id, req.user.sub, req.user.role);
+  }
+
+  /** Davomat matritsasi: oxirgi N sessiya × o'quvchi */
+  @Get(':id/attendance')
+  @Roles(Role.admin, Role.teacher, Role.subTeacher)
+  async getAttendance(@Param('id') id: string, @Query('sessions') sessions: string, @Request() req) {
+    return this.panels.getAttendance(id, req.user.sub, req.user.role, Number(sessions) || 10);
+  }
+
+  /** O'tgan va kelgusi dars sessiyalari */
+  @Get(':id/sessions')
+  @Roles(Role.admin, Role.teacher, Role.subTeacher)
+  async getSessions(
+    @Param('id') id: string,
+    @Query('past') past: string,
+    @Query('future') future: string,
+    @Request() req,
+  ) {
+    return this.panels.getSessions(id, req.user.sub, req.user.role, Number(past) || 10, Number(future) || 6);
+  }
+
+  /** Guruh topshiriqlari va topshirilgan/tekshirilgan holati */
+  @Get(':id/assignments')
+  @Roles(Role.admin, Role.teacher, Role.subTeacher)
+  async getAssignments(@Param('id') id: string, @Request() req) {
+    return this.panels.getAssignments(id, req.user.sub, req.user.role);
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
 
   @Put(':id')
   @Roles(Role.admin, Role.teacher)

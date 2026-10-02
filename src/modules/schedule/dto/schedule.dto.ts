@@ -23,6 +23,11 @@ export class CreateScheduleDto {
   @IsOptional()
   @IsBoolean()
   recurring?: boolean;
+
+  /** "YYYY-MM-DD" — dars qaysi kundan boshlab amal qiladi (standart: bugun) */
+  @IsOptional()
+  @IsString()
+  validFrom?: string;
 }
 
 export class UpdateScheduleDto {

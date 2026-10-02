@@ -8,6 +8,7 @@ import { Notification } from 'src/common/core/entitys/notification.entity';
 import { UserGamification } from 'src/common/core/entitys/gamification.entity';
 import { GroupMemberSettings } from 'src/common/core/entitys/group-member-settings.entity';
 import { GroupService } from './group.service';
+import { GroupPanelsService } from './group-panels.service';
 import { GroupController } from './group.controller';
 import { LessonGatingModule } from 'src/common/services/lesson-gating.module';
 
@@ -24,7 +25,7 @@ import { LessonGatingModule } from 'src/common/services/lesson-gating.module';
       GroupMemberSettings,
     ]),
   ],
-  providers: [GroupService],
+  providers: [GroupService, GroupPanelsService],
   controllers: [GroupController],
   exports: [GroupService],
 })

@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { User } from 'src/common/core/entitys/user.entity';
 import { Group } from 'src/common/core/entitys/group.entity';
 import { Lesson } from 'src/common/core/entitys/lesson.entity';
@@ -8,7 +8,7 @@ import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
 import { Assignment, AssignmentSubmission } from 'src/common/core/entitys/assignment.entity';
 import { UserGamification, UserSkill } from 'src/common/core/entitys/gamification.entity';
 import { ActivityLog, DailyTracking } from 'src/common/core/entitys/daily-tracking.entity';
-import { LessonProgressStatus, SubmissionStatus } from 'src/common/utils/enum';
+import { LessonProgressStatus, Role, SubmissionStatus } from 'src/common/utils/enum';
 
 @Injectable()
 export class MonitoringService {
@@ -42,6 +42,10 @@ export class MonitoringService {
 
     @InjectRepository(DailyTracking)
     private readonly dailyRepo: Repository<DailyTracking>,
+
+    // Yig'ma so'rovlar xom SQL bilan — group-panels.service.ts uslubida
+    @InjectDataSource()
+    private readonly ds: DataSource,
   ) {}
 
   /** Soniyani "Xs Ym" ko'rinishida formatlaydi (0 bo'lsa "0m"). */
@@ -321,129 +325,420 @@ export class MonitoringService {
     return currentAvgCompletion - lastWeekCompletionPct;
   }
 
-  async getStudentMonitoring(studentId: string): Promise<any> {
-    const student = await this.userRepo.findOne({ where: { id: studentId } });
-    if (!student) throw new NotFoundException("O'quvchi topilmadi");
-
-    const gamification = await this.gamificationRepo.findOne({ where: { userId: studentId } });
-    const skills = await this.skillRepo.find({ where: { userId: studentId } });
-
-    // Barcha dars progressi (faqat yakunlangan emas) — boshlangan darslardagi
-    // quiz/listening ishlari ham ko'rinishi uchun.
-    const progressRows = await this.progressRepo.find({
-      where: { userId: studentId },
-      relations: ['lesson'],
-    });
-    const engagedLessons = progressRows.filter(
-      (p) => p.status !== LessonProgressStatus.not_started,
+  /**
+   * O'quvchi detali — `/teacher/students/[id]` sahifasi uchun.
+   *
+   * Har bir blok bitta yig'ma SQL so'rov bilan olinadi (N+1 yo'q, CLAUDE.md qoidasi).
+   * Manbalar: davomat -> `attendance`, ko'nikmalar -> `lesson_progress.*_score`
+   * (writing -> `assignment_submissions`, chunki `writing_score` ustuni yo'q),
+   * heatmap -> `student_answers.answered_at`, haftalik daqiqa -> `daily_tracking`.
+   */
+  async getStudentMonitoring(
+    studentId: string,
+    viewer?: { sub: string; role: string },
+  ): Promise<any> {
+    const [profile] = await this.ds.query(
+      `SELECT u.id, u.first_name, u.last_name, u.username, u.email, u.avatar_url,
+              u.created_at, u.is_active,
+              sp.cefr_level,
+              ug.streak_current, ug.streak_max, ug.xp_total, ug.xp_weekly,
+              ug.league, ug.last_activity_date
+         FROM users u
+         LEFT JOIN student_profiles sp ON sp.user_id = u.id
+         LEFT JOIN user_gamification ug ON ug.user_id = u.id
+        WHERE u.id = $1`,
+      [studentId],
     );
-    const totalLessons = await this.lessonRepo.count();
+    if (!profile) throw new NotFoundException("O'quvchi topilmadi");
 
-    const allSubmissions = await this.submissionRepo.find({ where: { studentId } });
+    const [group] = await this.ds.query(
+      `SELECT g.id, g.name, g.teacher_id
+         FROM groups g
+         JOIN group_members m ON m.group_id = g.id
+        WHERE m.user_id = $1
+        ORDER BY g.created_at DESC
+        LIMIT 1`,
+      [studentId],
+    );
 
-    const skillsMap: Record<string, any> = {};
-    for (const skill of skills) {
-      skillsMap[skill.skill] = { level: skill.cefrLevel, pct: skill.score };
+    // Teacher/subTeacher faqat o'z guruhidagi o'quvchini ko'radi
+    if (viewer && viewer.role !== Role.admin && viewer.role !== Role.superAdmin) {
+      const [own] = await this.ds.query(
+        `SELECT 1
+           FROM group_members m
+           JOIN groups g ON g.id = m.group_id
+          WHERE m.user_id = $1 AND g.teacher_id = $2
+          LIMIT 1`,
+        [studentId, viewer.sub],
+      );
+      if (!own) throw new ForbiddenException("Bu o'quvchi sizning guruhingizda emas");
     }
 
-    const activityLogs = await this.activityRepo.find({ where: { userId: studentId } });
-    const heatmap = activityLogs.map((log) => ({
-      dayOfWeek: log.dayOfWeek,
-      hour: log.hourOfDay,
-      intensity: Math.min(4, log.durationMinutes),
+    const groupId: string | null = group?.id ?? null;
+    const weekStart = this.startOfWeek(new Date());
+    const prevWeekStart = new Date(weekStart.getTime() - 7 * 86400000);
+
+    const [
+      [progressAgg],
+      [attendanceAgg],
+      [writingAgg],
+      [assignmentAgg],
+      [vocabAgg],
+      vocabByLevel,
+      heatmapRows,
+      dailyRows,
+      topicRows,
+      assignmentRows,
+      [groupAgg],
+    ] = await Promise.all([
+      // 1. Dars progressi + ko'nikma ballari
+      this.ds.query(
+        `SELECT count(*) FILTER (WHERE lp.status <> 'not_started')::int AS engaged,
+                count(*) FILTER (WHERE lp.status = 'completed')::int AS completed,
+                avg(lp.score) AS avg_score,
+                COALESCE(sum(lp.time_spent_sec), 0)::bigint AS total_sec,
+                avg(lp.grammar_score) AS grammar,
+                avg(lp.reading_score) AS reading,
+                avg(lp.listening_score) AS listening,
+                avg(lp.speaking_score) AS speaking,
+                avg(lp.vocabulary_score) AS vocabulary,
+                max(lp.updated_at) AS last_progress_at
+           FROM lesson_progress lp
+          WHERE lp.user_id = $1`,
+        [studentId],
+      ),
+
+      // 2. Davomat — `attendance` jadvalidan (progressdan emas)
+      this.ds.query(
+        `SELECT count(*)::int AS total,
+                count(*) FILTER (WHERE a.status IN ('present','late'))::int AS attended,
+                count(*) FILTER (WHERE a.status = 'late')::int AS late,
+                count(*) FILTER (WHERE a.status = 'absent')::int AS absent,
+                count(*) FILTER (WHERE s.session_date >= (now() - interval '30 days'))::int AS total_30,
+                count(*) FILTER (WHERE s.session_date >= (now() - interval '30 days')
+                                   AND a.status IN ('present','late'))::int AS attended_30
+           FROM attendance a
+           JOIN schedule_sessions s ON s.id = a.session_id
+          WHERE a.user_id = $1`,
+        [studentId],
+      ),
+
+      // 3. Writing ko'nikmasi — writing turidagi baholangan topshiriqlar o'rtachasi
+      this.ds.query(
+        `SELECT avg(s.score::float / NULLIF(a.max_score, 0) * 100) AS pct,
+                count(*)::int AS graded
+           FROM assignment_submissions s
+           JOIN assignments a ON a.id = s.assignment_id
+          WHERE s.student_id = $1 AND a.type = 'writing' AND s.score IS NOT NULL`,
+        [studentId],
+      ),
+
+      // 4. Topshiriqlar KPI si — jami guruhga berilganidan, bajarilgani submissionlardan
+      this.ds.query(
+        `SELECT (SELECT count(*)::int FROM assignments a
+                  WHERE a.status <> 'draft' AND a.group_id = $2::uuid) AS total,
+                count(*) FILTER (WHERE s.status IN ('submitted','graded','late'))::int AS completed,
+                count(*) FILTER (WHERE s.status = 'late')::int AS late,
+                count(*) FILTER (WHERE s.status IN ('pending','revision_needed'))::int AS pending
+           FROM assignment_submissions s
+          WHERE s.student_id = $1`,
+        [studentId, groupId],
+      ),
+
+      // 5. Lug'at: o'zlashtirilgan / o'rganilayotgan / shu hafta qo'shilgani
+      this.ds.query(
+        `SELECT count(*) FILTER (WHERE uvp.status = 'mastered')::int AS mastered,
+                count(*) FILTER (WHERE uvp.status = 'learning')::int AS learning,
+                count(*) FILTER (WHERE uvp.status = 'mastered'
+                                   AND uvp.updated_at >= $2::timestamptz)::int AS weekly_gain
+           FROM user_vocabulary_progress uvp
+          WHERE uvp.user_id = $1`,
+        [studentId, weekStart.toISOString()],
+      ),
+
+      // 6. Lug'at CEFR kesimida — so'z darsi orqali (vocabularys da cefr ustuni yo'q)
+      this.ds.query(
+        `SELECT COALESCE(l.cefr_level, '?') AS level, count(*)::int AS count
+           FROM user_vocabulary_progress uvp
+           JOIN vocabulary_relations vr ON vr.id = uvp.pair_id
+           JOIN vocabularys v ON v.id = vr.vocabulary_id
+           LEFT JOIN lessons l ON l.id = v.lesson_id
+          WHERE uvp.user_id = $1 AND uvp.status = 'mastered'
+          GROUP BY 1
+          ORDER BY 1`,
+        [studentId],
+      ),
+
+      // 7. Faollik heatmapi — javob berilgan payt (hafta kuni x soat), mahalliy vaqtda
+      this.ds.query(
+        `SELECT (EXTRACT(ISODOW FROM sa.answered_at AT TIME ZONE 'Asia/Tashkent')::int - 1) AS dow,
+                EXTRACT(HOUR FROM sa.answered_at AT TIME ZONE 'Asia/Tashkent')::int AS hour,
+                count(*)::int AS count
+           FROM student_answers sa
+          WHERE sa.user_id = $1
+            AND sa.answered_at >= now() - interval '90 days'
+          GROUP BY 1, 2`,
+        [studentId],
+      ),
+
+      // 8. Kunlik daqiqalar (joriy va o'tgan hafta)
+      this.ds.query(
+        `SELECT d.date::text AS date, d.minutes_spent::int AS minutes
+           FROM daily_tracking d
+          WHERE d.user_id = $1 AND d.date >= $2::date
+          ORDER BY d.date`,
+        [studentId, prevWeekStart.toISOString().slice(0, 10)],
+      ),
+
+      // 9. Mavzular bo'yicha statistika
+      this.ds.query(
+        `SELECT l.order_index, l.lesson_name, l.cefr_level,
+                u.number AS unit_number, u.title AS unit_title,
+                lp.status, lp.score, lp.time_spent_sec::int AS time_spent_sec,
+                lp.attempts::int AS attempts, lp.completed_at
+           FROM lesson_progress lp
+           JOIN lessons l ON l.id = lp.lesson_id
+           LEFT JOIN units u ON u.id = l.unit_id
+          WHERE lp.user_id = $1 AND lp.status <> 'not_started'
+          ORDER BY l.order_index
+          LIMIT 30`,
+        [studentId],
+      ),
+
+      // 10. So'nggi topshiriqlar
+      this.ds.query(
+        `SELECT a.id, a.title, a.type, a.due_date, a.max_score,
+                s.status, s.score, s.submitted_at, s.graded_at
+           FROM assignment_submissions s
+           JOIN assignments a ON a.id = s.assignment_id
+          WHERE s.student_id = $1
+          ORDER BY COALESCE(s.submitted_at, s.updated_at) DESC
+          LIMIT 5`,
+        [studentId],
+      ),
+
+      // 11. Guruh o'rtachasi va o'quvchining guruhdagi o'rni
+      groupId
+        ? this.ds.query(
+            `SELECT (SELECT avg(lp.score)
+                       FROM lesson_progress lp
+                       JOIN group_members m ON m.user_id = lp.user_id
+                      WHERE m.group_id = $1 AND lp.score IS NOT NULL) AS avg_score,
+                    (SELECT count(*)::int FROM group_members m WHERE m.group_id = $1) AS size,
+                    (SELECT count(*)::int + 1
+                       FROM group_members m
+                       LEFT JOIN user_gamification ug ON ug.user_id = m.user_id
+                      WHERE m.group_id = $1
+                        AND COALESCE(ug.xp_total, 0) >
+                            COALESCE((SELECT xp_total FROM user_gamification WHERE user_id = $2), 0)
+                    ) AS rank`,
+            [groupId, studentId],
+          )
+        : Promise.resolve([undefined]),
+    ]);
+
+    // ── Ko'nikmalar ───────────────────────────────────────────────────────────
+    const vocabTotal = vocabAgg?.mastered ?? 0;
+    const skills = [
+      { key: 'grammar', label: 'Grammar', pct: this.roundOrNull(progressAgg?.grammar) },
+      { key: 'reading', label: 'Reading', pct: this.roundOrNull(progressAgg?.reading) },
+      { key: 'listening', label: 'Listening', pct: this.roundOrNull(progressAgg?.listening) },
+      { key: 'speaking', label: 'Speaking', pct: this.roundOrNull(progressAgg?.speaking) },
+      {
+        key: 'writing',
+        label: 'Writing',
+        pct: writingAgg?.graded ? this.roundOrNull(writingAgg.pct) : null,
+        note: writingAgg?.graded ? null : 'baholangan ish yo\'q',
+      },
+      {
+        key: 'vocabulary',
+        label: "Lug'at boyligi",
+        pct: this.roundOrNull(progressAgg?.vocabulary),
+        note: vocabTotal ? `${vocabTotal} so'z` : null,
+      },
+    ].map((s) => ({
+      ...s,
+      note: (s as any).note ?? null,
+      // CEFR yorlig'i foizdan chiqariladi — `user_skills` jadvaliga runtime'da hech kim yozmaydi
+      level: this.cefrFromPct(s.pct),
     }));
 
-    const studentGroup = await this.groupRepo.findOne({
-      where: { members: { id: studentId } },
-      relations: ['members'],
+    // ── Heatmap ───────────────────────────────────────────────────────────────
+    const maxBucket = heatmapRows.reduce((m: number, r: any) => Math.max(m, r.count), 0);
+    const heatmap = heatmapRows.map((r: any) => ({
+      dayOfWeek: r.dow,
+      hour: r.hour,
+      count: r.count,
+      intensity: maxBucket ? Math.max(1, Math.ceil((r.count / maxBucket) * 4)) : 0,
+    }));
+    const peakLabel = this.resolvePeakHours(heatmapRows);
+
+    // ── Haftalik daqiqalar ────────────────────────────────────────────────────
+    const dailyMap = new Map<string, number>(
+      dailyRows.map((d: any) => [d.date, d.minutes]),
+    );
+    const DAY_LABELS = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
+    const weeklyActivity = DAY_LABELS.map((label, i) => {
+      const date = new Date(weekStart.getTime() + i * 86400000).toISOString().slice(0, 10);
+      return { day: label, date, minutes: dailyMap.get(date) ?? 0 };
     });
+    const weeklyMinutes = weeklyActivity.reduce((sum, d) => sum + d.minutes, 0);
+    const prevWeekMinutes = dailyRows
+      .filter((d: any) => d.date < weeklyActivity[0].date)
+      .reduce((sum: number, d: any) => sum + d.minutes, 0);
+    const weeklyChangePercent = prevWeekMinutes
+      ? Math.round(((weeklyMinutes - prevWeekMinutes) / prevWeekMinutes) * 100)
+      : null;
 
-    const scoredLessons = progressRows.filter((p) => p.score != null);
-    const avgScore = scoredLessons.length
-      ? Math.round(scoredLessons.reduce((s, p) => s + (p.score ?? 0), 0) / scoredLessons.length)
-      : 0;
-    const groupAvgScore = studentGroup
-      ? await this.computeGroupAvgScore(studentGroup.members.map((m) => m.id))
-      : 0;
+    // ── Holat ─────────────────────────────────────────────────────────────────
+    const lastActiveAt: Date | null =
+      progressAgg?.last_progress_at ??
+      (profile.last_activity_date ? new Date(profile.last_activity_date) : null);
+    const daysSinceActive = lastActiveAt
+      ? Math.floor((Date.now() - new Date(lastActiveAt).getTime()) / 86400000)
+      : null;
+    const avgScore = this.roundOrNull(progressAgg?.avg_score) ?? 0;
+    const attendanceRate = this.pct(attendanceAgg?.attended, attendanceAgg?.total);
+    const status =
+      daysSinceActive == null || daysSinceActive > 7 || attendanceRate < 60 || avgScore < 60
+        ? 'risk'
+        : daysSinceActive > 3 || attendanceRate < 75 || avgScore < 75
+          ? 'watch'
+          : 'good';
 
-    const attendance = totalLessons
-      ? Math.min(100, Math.round((engagedLessons.length / totalLessons) * 100))
-      : 0;
-
-    // Foydalanish vaqti (Davomat) va o'zlashtirish (mastery) — guruh monitoringi
-    // bilan bir xil ma'no.
-    const usageMinutes = Math.round(
-      progressRows.reduce((s, p) => s + (p.timeSpentSec ?? 0), 0) / 60,
-    );
-    const dailyRows = await this.dailyRepo.find({ where: { userId: studentId } });
-    const activeDays = dailyRows.filter((d) => d.minutesSpent > 0).length;
-    const dailyAvgMinutes = activeDays
-      ? Math.round(dailyRows.reduce((s, d) => s + d.minutesSpent, 0) / activeDays)
-      : 0;
-    const mastery = avgScore;
-
-    const lastActivityAt = this.resolveLastActivity(
-      progressRows,
-      gamification?.lastActivityDate ?? null,
-    );
-    const daysSinceActive = lastActivityAt
-      ? Math.floor((Date.now() - lastActivityAt.getTime()) / 86400000)
-      : 999;
-    const studentStatus = daysSinceActive > 7 ? 'risk' : daysSinceActive > 3 ? 'watch' : 'good';
-
-    // Joriy hafta o'rtacha ballini o'tgan hafta bilan solishtirish (mavjud completedAt
-    // vaqt tamg'alari asosida, alohida tarixiy jadval talab qilinmaydi)
-    const weeklyChangePercent = this.computeWeeklyScoreChange(scoredLessons);
+    const totalMinutes = Math.round(Number(progressAgg?.total_sec ?? 0) / 60);
 
     return {
       student: {
-        id: student.id,
-        firstName: student.firstName ?? '',
-        lastName: student.lastName ?? '',
-        email: student.email ?? null,
-        group: studentGroup ? { id: studentGroup.id, name: studentGroup.name } : null,
-        joinedAt: student.createdAt,
-        lastActiveAt: lastActivityAt ? lastActivityAt.toISOString() : null,
-        status: studentStatus,
+        id: profile.id,
+        firstName: profile.first_name ?? '',
+        lastName: profile.last_name ?? '',
+        username: profile.username ?? null,
+        email: profile.email ?? null,
+        avatarUrl: profile.avatar_url ?? null,
+        cefrLevel: profile.cefr_level ?? null,
+        isActive: profile.is_active,
+        joinedAt: profile.created_at,
+        lastActiveAt,
+        daysSinceActive,
+        status,
+        group: group ? { id: group.id, name: group.name } : null,
       },
       summary: {
-        streak: gamification?.streakCurrent ?? 0,
-        totalTime: `${Math.round(progressRows.reduce((s, p) => s + p.timeSpentSec, 0) / 60)}m`,
-        rankInGroup: gamification?.rankWeekly ?? null,
+        streak: profile.streak_current ?? 0,
+        streakMax: profile.streak_max ?? 0,
+        xpTotal: profile.xp_total ?? 0,
+        league: profile.league ?? null,
+        totalMinutes,
+        totalLabel: this.fmtDuration(totalMinutes),
+        rankInGroup: groupAgg?.rank ?? null,
+        groupSize: groupAgg?.size ?? null,
       },
       kpi: {
         avgScore,
-        groupAvgScore,
-        attendance,
-        usageMinutes,
-        usageLabel: this.fmtDuration(usageMinutes),
-        dailyAvgMinutes,
-        dailyAvgLabel: this.fmtDuration(dailyAvgMinutes),
-        mastery,
-        completedAssignments: allSubmissions.filter((s) => s.status !== SubmissionStatus.pending).length,
-        totalAssignments: allSubmissions.length,
-        lateAssignments: allSubmissions.filter((s) => s.status === SubmissionStatus.late).length,
-        weeklyActiveTime: `${Math.round((gamification?.xpWeekly ?? 0) / 10)}m`,
+        groupAvgScore: this.roundOrNull(groupAgg?.avg_score) ?? 0,
+        attendanceRate: this.pct(attendanceAgg?.attended_30, attendanceAgg?.total_30),
+        attendedSessions: attendanceAgg?.attended_30 ?? 0,
+        totalSessions: attendanceAgg?.total_30 ?? 0,
+        attendanceRateAllTime: attendanceRate,
+        lateSessions: attendanceAgg?.late ?? 0,
+        completedAssignments: assignmentAgg?.completed ?? 0,
+        // Guruhsiz o'quvchida `total` 0 chiqadi — bajarilganidan kichik bo'lib qolmasin
+        totalAssignments: Math.max(assignmentAgg?.total ?? 0, assignmentAgg?.completed ?? 0),
+        lateAssignments: assignmentAgg?.late ?? 0,
+        completedLessons: progressAgg?.completed ?? 0,
+        weeklyMinutes,
+        weeklyLabel: this.fmtDuration(weeklyMinutes),
         weeklyChangePercent,
       },
-      skills: skillsMap,
-      vocabulary: { total: 0, retention: 0, weeklyGain: 0 },
-      activityHeatmap: heatmap,
-      weeklyMinutes: [],
-      // Boshlangan darslar (faqat yakunlangan emas) — quiz/listening ishlari ko'rinadi
-      topicStats: engagedLessons.map((p) => ({
-        lessonCode: p.lesson?.orderIndex,
-        title: p.lesson?.lessonName,
-        score: p.score != null ? `${p.score}%` : '—',
-        timeSpent: `${Math.round(p.timeSpentSec / 60)}m`,
-        attempts: p.attempts,
+      skills,
+      vocabulary: {
+        total: vocabTotal,
+        learning: vocabAgg?.learning ?? 0,
+        weeklyGain: vocabAgg?.weekly_gain ?? 0,
+        retention: this.pct(vocabAgg?.mastered, (vocabAgg?.mastered ?? 0) + (vocabAgg?.learning ?? 0)),
+        byLevel: vocabByLevel.map((r: any) => ({ level: r.level, count: r.count })),
+      },
+      activity: { heatmap, peakLabel },
+      weeklyActivity,
+      topicStats: topicRows.map((r: any) => ({
+        lessonCode:
+          r.unit_number != null ? `${r.unit_number}.${r.order_index}` : `${r.order_index}`,
+        unitTitle: r.unit_title ?? null,
+        title: r.lesson_name,
+        cefrLevel: r.cefr_level ?? null,
+        status: r.status,
+        // Alohida "bajarildi %" ustuni yo'q — status dan chiqariladi
+        completion: r.status === 'completed' ? 100 : r.status === 'in_progress' ? 50 : 0,
+        score: r.score,
+        timeSpentSec: r.time_spent_sec,
+        timeLabel: r.time_spent_sec ? this.fmtDuration(Math.round(r.time_spent_sec / 60)) : null,
+        attempts: r.attempts,
+        completedAt: r.completed_at,
       })),
-      recentAssignments: allSubmissions.slice(0, 5).map((s) => ({
-        status: s.status,
-        score: s.score,
-        submittedAt: s.submittedAt,
+      recentAssignments: assignmentRows.map((r: any) => ({
+        id: r.id,
+        title: r.title,
+        type: r.type,
+        status: r.status,
+        score: r.score,
+        maxScore: r.max_score,
+        dueDate: r.due_date,
+        submittedAt: r.submitted_at,
+        gradedAt: r.graded_at,
       })),
     };
+  }
+
+  /** Dushanba 00:00 (mahalliy) */
+  private startOfWeek(d: Date): Date {
+    const day = (d.getDay() + 6) % 7; // 0 = Dushanba
+    const start = new Date(d);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - day);
+    return start;
+  }
+
+  private pct(part?: number | null, total?: number | null): number {
+    if (!total) return 0;
+    return Math.round(((part ?? 0) / total) * 100);
+  }
+
+  private roundOrNull(v: unknown): number | null {
+    if (v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.round(n) : null;
+  }
+
+  /** Foizdan CEFR yorlig'i (`user_skills` jadvaliga runtime'da yozilmagani uchun) */
+  private cefrFromPct(pct: number | null): string | null {
+    if (pct == null) return null;
+    if (pct < 40) return 'A1';
+    if (pct < 55) return 'A2';
+    if (pct < 70) return 'B1';
+    if (pct < 85) return 'B2';
+    if (pct < 95) return 'C1';
+    return 'C2';
+  }
+
+  /** Eng faol 2 soatlik oraliq, masalan "16:00–18:00" */
+  private resolvePeakHours(rows: Array<{ hour: number; count: number }>): string | null {
+    if (!rows.length) return null;
+    const byHour = new Array(24).fill(0);
+    for (const r of rows) byHour[r.hour] += r.count;
+
+    let bestStart = 0;
+    let best = -1;
+    for (let h = 0; h < 23; h++) {
+      const sum = byHour[h] + byHour[h + 1];
+      if (sum > best) {
+        best = sum;
+        bestStart = h;
+      }
+    }
+    if (best <= 0) return null;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(bestStart)}:00–${pad(bestStart + 2)}:00`;
   }
 
   /** completedAt vaqt tamg'asi mavjud bo'lgan darslar asosida joriy va o'tgan

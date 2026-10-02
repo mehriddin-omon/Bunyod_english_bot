@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { Group } from 'src/common/core/entitys/group.entity';
 import { GroupMemberSettings } from 'src/common/core/entitys/group-member-settings.entity';
 import { ScheduleSession } from 'src/common/core/entitys/schedule.entity';
 import { Lesson } from 'src/common/core/entitys/lesson.entity';
+import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
 import { Unit } from 'src/common/core/entitys/unit.entity';
 import { LessonStatus, SessionStatus } from 'src/common/utils/enum';
 
@@ -36,7 +37,62 @@ export class LessonGatingService {
 
     @InjectRepository(Unit)
     private readonly unitRepo: Repository<Unit>,
+
+    @InjectRepository(LessonProgress)
+    private readonly progressRepo: Repository<LessonProgress>,
   ) {}
+
+  /**
+   * Berilgan dars talaba uchun QACHON OCHILGAN (null — hali ochilmagan).
+   *
+   * Lug'at coinli sinovining muddati shundan hisoblanadi: "keyingi yangi dars
+   * ochilgandan 24 soat o'tguncha". "Ochilgan" — SINFDA ochilgani, ya'ni
+   * guruh jadvali bo'yicha:
+   *
+   *  - AUTO-ADVANCE guruh: `getGroupCeilingIndex` = o'tgan sessiyalar soni,
+   *    dars `i` (global tartibdagi indeks) `i`-nchi sessiya kuni ochiladi.
+   *    Vaqt = o'sha sessiyaning `sessionDate + startTime` (dars boshlanishi).
+   *    Talaba oldingi darsni tugatmagan bo'lsa ham vaqt ketaveradi — bu
+   *    "sinf bilan birga yurish" qoidasi. `i = 0` (birinchi dars) — talaba uni
+   *    birinchi ochgan vaqt.
+   *  - GURUHSIZ, ERKIN (isFree) yoki MANUAL chegarali guruh: jadval yo'q /
+   *    ochilish vaqti saqlanmagan — talaba shu darsga BIRINCHI KIRGAN vaqt
+   *    (`lesson_progress.created_at`); kirmagan bo'lsa null.
+   */
+  async getLessonUnlockTime(userId: string, lessonIndex: number): Promise<Date | null> {
+    const firstOpenedAt = async (): Promise<Date | null> => {
+      const order = await this.getPublishedLessonOrder();
+      const lesson = order[lessonIndex];
+      if (!lesson) return null;
+      const progress = await this.progressRepo.findOne({ where: { userId, lessonId: lesson.id } });
+      return progress?.createdAt ?? null;
+    };
+
+    if (lessonIndex <= 0) return firstOpenedAt();
+
+    const group = await this.findStudentGroup(userId);
+    if (!group || !group.autoAdvanceEnabled) return firstOpenedAt();
+
+    const settings = await this.settingsRepo.findOne({ where: { groupId: group.id, userId } });
+    if (settings?.isFree) return firstOpenedAt();
+
+    // i-nchi (1 dan boshlab) bekor qilinmagan sessiya — `getGroupCeilingIndex`
+    // bilan bir xil to'plam, faqat sanaga emas, tartibga qarab olinadi.
+    const [session] = await this.sessionRepo.find({
+      where: { groupId: group.id, status: Not(SessionStatus.cancelled) },
+      order: { sessionDate: 'ASC', startTime: 'ASC' },
+      skip: lessonIndex - 1,
+      take: 1,
+    });
+    if (!session) return null;
+
+    // 'YYYY-MM-DD' + 'HH:MM:SS' — server mahalliy vaqtida (home.service dagi
+    // "bugun" hisobi bilan bir xil yondashuv)
+    const at = new Date(`${session.sessionDate}T${session.startTime || '00:00:00'}`);
+    if (Number.isNaN(at.getTime())) return null;
+    // Kelajakdagi sessiya — dars hali ochilmagan
+    return at.getTime() <= Date.now() ? at : null;
+  }
 
   /**
    * Barcha nashr etilgan darslarni global tartibda qaytaradi: bo'lim.number ASC,

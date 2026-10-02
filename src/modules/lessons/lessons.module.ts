@@ -14,7 +14,9 @@ import { QuizContent } from 'src/common/core/entitys/quiz-content.entity';
 import { Exercise } from 'src/common/core/entitys/exercise.entity';
 import { ExerciseItem } from 'src/common/core/entitys/exercise-item.entity';
 import { StudentAnswer } from 'src/common/core/entitys/student-answer.entity';
-import { UserGamification } from 'src/common/core/entitys/gamification.entity';
+import { UserGamification, XpTransaction } from 'src/common/core/entitys/gamification.entity';
+import { Vocabulary } from 'src/common/core/entitys/vocabulary.entity';
+import { VocabularyRelation } from 'src/common/core/entitys/vocabulary-relation.entity';
 import { StudentAnswersService } from './student-answers.service';
 
 @Module({
@@ -33,6 +35,9 @@ import { StudentAnswersService } from './student-answers.service';
       ExerciseItem,
       StudentAnswer,
       UserGamification,
+      Vocabulary,
+      VocabularyRelation,
+      XpTransaction,
     ]),
   ],
   providers: [LessonsService, StudentAnswersService],

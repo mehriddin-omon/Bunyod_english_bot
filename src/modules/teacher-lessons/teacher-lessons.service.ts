@@ -139,11 +139,18 @@ export class TeacherLessonsService {
   }
 
   async createLesson(dto: CreateLessonDto) {
+    let unitId: string | null = null;
+    if (dto.unitNumber != null) {
+      const unit = await this.unitRepo.findOne({ where: { number: dto.unitNumber } });
+      if (!unit) throw new NotFoundException(`Unit ${dto.unitNumber} topilmadi`);
+      unitId = unit.id;
+    }
     const lesson = this.lessonRepo.create({
       lessonName: dto.title,
       orderIndex: dto.orderIndex ?? 0,
       cefrLevel: dto.cefrLevel ?? null,
       groupId: dto.groupId ?? null,
+      unitId,
       status: LessonStatus.draft,
     });
     const saved = await this.lessonRepo.save(lesson);
@@ -227,6 +234,15 @@ export class TeacherLessonsService {
     if (dto.orderIndex !== undefined) lesson.orderIndex  = dto.orderIndex;
     if (dto.cefrLevel  !== undefined) lesson.cefrLevel   = dto.cefrLevel;
     if (dto.groupId    !== undefined) lesson.groupId     = dto.groupId;
+    if (dto.unitNumber !== undefined) {
+      if (dto.unitNumber === null) {
+        lesson.unitId = null;
+      } else {
+        const unit = await this.unitRepo.findOne({ where: { number: dto.unitNumber } });
+        if (!unit) throw new NotFoundException(`Unit ${dto.unitNumber} topilmadi`);
+        lesson.unitId = unit.id;
+      }
+    }
     await this.lessonRepo.save(lesson);
     const updated = await this.lessonRepo.findOne({ where: { id: lessonId }, relations: ['group', 'unit'] });
     const blockInfoMap = await this.getBlockInfo([lessonId]);
