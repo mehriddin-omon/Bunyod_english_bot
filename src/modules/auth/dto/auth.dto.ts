@@ -66,3 +66,18 @@ export class UpdateProfileDto {
   @MinLength(6)
   newPassword?: string;
 }
+
+/** Ilova ichidan akkauntni o'chirish (foydalanuvchi tizimga kirgan) */
+export class DeleteAccountDto {
+  @IsString()
+  password: string;
+}
+
+/** Veb-sahifadan akkauntni o'chirish (login + parol bilan, tokensiz) */
+export class DeleteAccountByCredentialsDto {
+  @IsString()
+  username: string;
+
+  @IsString()
+  password: string;
+}

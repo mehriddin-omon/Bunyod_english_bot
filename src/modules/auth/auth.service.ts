@@ -1,5 +1,6 @@
 import * as bcrypt from 'bcrypt';
-import { Repository } from 'typeorm';
+import { randomBytes } from 'crypto';
+import { QueryFailedError, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   BadRequestException,
@@ -157,6 +158,68 @@ export class AuthService {
 
     const saved = await this.userRepository.save(user);
     return { message: 'Profil yangilandi', user: this.formatUser(saved) };
+  }
+
+  /** Ilova ichidan: tizimga kirgan foydalanuvchi o'z parolini tasdiqlaydi */
+  async deleteOwnAccount(userId: string, password: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Foydalanuvchi topilmadi');
+
+    const ok = await bcrypt.compare(password, user.password);
+    // 401 emas — ilova 401 da token yangilashga urinib, sessiyani uzib qo'ymasin
+    if (!ok) throw new BadRequestException("Parol noto'g'ri");
+
+    return this.removeAccount(user);
+  }
+
+  /** Veb-sahifadan: login + parol bilan (tokensiz) */
+  async deleteAccountByCredentials(username: string, password: string) {
+    const user = await this.userRepository.findOne({ where: { username } });
+    // Login yoki parol xatosini ajratmaymiz — login mavjudligini bilib bo'lmasin
+    if (!user) throw new UnauthorizedException("Noto'g'ri login yoki parol");
+
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) throw new UnauthorizedException("Noto'g'ri login yoki parol");
+
+    return this.removeAccount(user);
+  }
+
+  /**
+   * Akkauntni butunlay o'chiradi. Bog'liq jadvallar (progress, lug'at, coin,
+   * bildirishnoma, profil, gamifikatsiya...) FK `ON DELETE CASCADE` orqali
+   * o'zi o'chadi. Agar biror jadval o'chirishga to'sqinlik qilsa (FK xatosi
+   * 23503) — shaxsiy ma'lumotlar tozalanib, akkaunt anonimlashtiriladi.
+   */
+  private async removeAccount(user: User) {
+    if (user.role === Role.admin || user.role === Role.superAdmin) {
+      throw new ForbiddenException(
+        "Administrator akkauntini bu yerdan o'chirib bo'lmaydi",
+      );
+    }
+
+    try {
+      await this.userRepository.delete({ id: user.id });
+    } catch (err) {
+      const code = (err as any)?.driverError?.code ?? (err as any)?.code;
+      if (!(err instanceof QueryFailedError) || code !== '23503') throw err;
+
+      const randomPassword = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
+      await this.userRepository.update(user.id, {
+        username: `deleted_${user.id}`,
+        password: randomPassword,
+        firstName: null,
+        lastName: null,
+        phoneNumber: null,
+        email: null,
+        telegramId: null,
+        telegramUsername: null,
+        avatarUrl: null,
+        refreshToken: null,
+        isActive: false,
+      });
+    }
+
+    return { message: "Akkaunt va unga tegishli ma'lumotlar o'chirildi" };
   }
 
   formatUser(user: User) {
