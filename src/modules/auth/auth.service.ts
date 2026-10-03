@@ -37,7 +37,10 @@ export class AuthService {
       if (existingPhone) throw new ConflictException('Bu telefon raqam band');
     }
 
-    const role = dto.role === Role.admin ? Role.student : (dto.role ?? Role.student);
+    // Ochiq ro'yxatdan o'tishda faqat student yaratiladi. dto.role e'tiborsiz
+    // qoldiriladi — aks holda istalgan odam o'zini teacher/admin/superAdmin qila
+    // olardi. Teacher kerak bo'lsa admin PATCH /admin/user/:id/role orqali beradi.
+    const role = Role.student;
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
     const user = await this.userRepository.save(
