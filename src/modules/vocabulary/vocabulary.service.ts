@@ -38,17 +38,20 @@ const REVIEW_MS_FAIL          = 1 * 86_400_000;
  * tashlandi. Dars lug'ati 4 ta KETMA-KET bosqichda yodlanadi; har bosqich
  * dars lug'atidagi HAMMA so'zni so'raydi. Keyingi bosqich oldingisi
  * o'tilgandan keyin ochiladi (qulf serverda tekshiriladi):
- *   1 — oddiy karta:      oxirigacha ko'rib chiqilsa o'tildi (passPercent 0)
- *   2 — variantli test:   80%+
- *   3 — eshitib topish:   80%+ (talaffuzi yo'q so'z variantliga tushadi)
+ * Tartib qiyinlik bo'yicha (2026-10, 1789700000000-ReorderVocabularyStages):
+ *   1 — variantli test:   80%+
+ *   2 — eshitib topish:   80%+ (talaffuzi yo'q so'z variantliga tushadi)
+ *   3 — karta:            oxirigacha ko'rib chiqilsa o'tildi (passPercent 0)
  *   4 — yozib yodlash:    80%+
+ * Bosqich raqami `vocabulary_stage_progress.stage` da saqlanadi — tartibni
+ * o'zgartirsangiz eski yozuvlarni qayta raqamlaydigan migratsiya ham kerak.
  *
  * Bosqichlar TAYYORLOV — coin bermaydi. Coin faqat "Coinli sinov"da.
  */
 export const VOCAB_STAGES: { stage: number; mode: PracticeMode; passPercent: number }[] = [
-  { stage: 1, mode: 'flashcard',       passPercent: 0 },
-  { stage: 2, mode: 'multiple_choice', passPercent: 80 },
-  { stage: 3, mode: 'audio',           passPercent: 80 },
+  { stage: 1, mode: 'multiple_choice', passPercent: 80 },
+  { stage: 2, mode: 'audio',           passPercent: 80 },
+  { stage: 3, mode: 'flashcard',       passPercent: 0 },
   { stage: 4, mode: 'typing',          passPercent: 80 },
 ];
 
@@ -63,6 +66,23 @@ function parseStatuses(raw?: string): VocabStatus[] {
  * Tavsiya etilgan to'plam qoidasi — `getStudentStats` va `startSession`
  * dagi SQL bilan bir xil bo'lishi SHART (son, ro'yxat, test mos kelsin).
  */
+/**
+ * `priority` to'plamidagi guruh: 0 qiynalgan, 1 uzoq takrorlanmagan,
+ * 2 bugun takrorlash, 3 yangi; hech biriga kirmasa — null. So'z birinchi
+ * mos kelgan guruhga tushadi (uzoq takrorlanmagan so'z "bugun"da takrorlanmaydi).
+ * `startSession` dagi CASE ifodasi bilan bir xil bo'lishi SHART.
+ */
+function priorityGroup(
+  prog: { attempts: number; wrongAttempts: number; nextReviewAt: Date | null; status: VocabStatus } | undefined,
+  nowMs: number,
+): number | null {
+  if (matchesPreset('hard', prog, nowMs))    return 0;
+  if (matchesPreset('overdue', prog, nowMs)) return 1;
+  if (matchesPreset('today', prog, nowMs))   return 2;
+  if (matchesPreset('new', prog, nowMs))     return 3;
+  return null;
+}
+
 function matchesPreset(
   preset: SessionFilter,
   prog: { attempts: number; wrongAttempts: number; nextReviewAt: Date | null; status: VocabStatus } | undefined,
@@ -73,6 +93,7 @@ function matchesPreset(
     case 'today':   return !!prog?.nextReviewAt && prog.nextReviewAt.getTime() <= nowMs;
     case 'overdue': return !!prog?.nextReviewAt && nowMs - prog.nextReviewAt.getTime() > OVERDUE_MS;
     case 'hard':    return !!prog && prog.attempts > 0 && prog.wrongAttempts > prog.attempts / 2;
+    case 'priority': return priorityGroup(prog, nowMs) !== null;
     default:        return true;
   }
 }
@@ -437,7 +458,7 @@ export class VocabularyService {
     ]));
 
     // Sort keys stored separately — avoids polluting the output shape
-    type SortKey = { status: VocabStatus; lessonOrder: number; wordOrder: number; pairCreatedAt: Date; nextReviewAt: Date | null; lastReviewedAt: Date | null };
+    type SortKey = { group: number; status: VocabStatus; lessonOrder: number; wordOrder: number; pairCreatedAt: Date; nextReviewAt: Date | null; lastReviewedAt: Date | null };
     const sortKeys = new Map<string, SortKey>();
 
     const result = pairs
@@ -448,6 +469,7 @@ export class VocabularyService {
         if (preset && !matchesPreset(preset, prog, nowMs)) return false;
         const meta = wordMetaMap.get(pair.vocabularyId);
         sortKeys.set(pair.id, {
+          group:          preset === 'priority' ? (priorityGroup(prog, nowMs) ?? 9) : 0,
           status,
           lessonOrder:    meta?.lessonOrder ?? 0,
           wordOrder:      meta?.wordOrder   ?? 0,
@@ -484,6 +506,8 @@ export class VocabularyService {
     result.sort((a, b) => {
       const ka = sortKeys.get(a.pairId)!;
       const kb = sortKeys.get(b.pairId)!;
+      // priority: avval guruh ketma-ketligi (qiynalgan → uzoq → bugun → yangi)
+      if (ka.group !== kb.group) return ka.group - kb.group;
       const sa = STATUS_ORDER[ka.status] ?? 3;
       const sb = STATUS_ORDER[kb.status] ?? 3;
       if (sa !== sb) return sa - sb;
@@ -709,6 +733,22 @@ export class VocabularyService {
       case 'overdue':
         idQb.andWhere('uvp.next_review_at < :cutoff', { cutoff: overdueCutoff });
         break;
+      case 'priority':
+        // qiynalgan YOKI takrorlash vaqti kelgan (uzoq takrorlanmaganlar ham shu yerda) YOKI yangi
+        idQb.andWhere(
+          "((uvp.attempts > 0 AND uvp.wrong_attempts > uvp.attempts / 2.0)" +
+          ' OR (uvp.next_review_at IS NOT NULL AND uvp.next_review_at <= :now)' +
+          " OR uvp.id IS NULL OR uvp.status = 'new')",
+          { now },
+        );
+        // guruh ketma-ketligi `priorityGroup` bilan bir xil
+        idQb.addSelect(
+          'CASE WHEN uvp.attempts > 0 AND uvp.wrong_attempts > uvp.attempts / 2.0 THEN 0' +
+          ' WHEN uvp.next_review_at < :cutoff THEN 1' +
+          ' WHEN uvp.next_review_at <= :now THEN 2 ELSE 3 END',
+          'grp',
+        ).setParameters({ cutoff: overdueCutoff, now });
+        break;
       case 'custom': {
         // Bir nechta status (vergul bilan): "new,learning"
         const statuses = parseStatuses(params.status);
@@ -723,7 +763,10 @@ export class VocabularyService {
       }
     }
 
-    const rawIds: { id: string }[] = await idQb.orderBy('RANDOM()').limit(limit).getRawMany();
+    // priority: avval qiynalganlar, keyin uzoq takrorlanmagan, bugun, yangi — guruh ichida tasodifiy
+    if (params.filter === 'priority') idQb.orderBy('grp', 'ASC').addOrderBy('RANDOM()');
+    else idQb.orderBy('RANDOM()');
+    const rawIds: { id: string }[] = await idQb.limit(limit).getRawMany();
     const selectedIds = rawIds.map((r) => r.id);
     if (!selectedIds.length) return { sessionId: null, totalCards: 0, cards: [] };
 

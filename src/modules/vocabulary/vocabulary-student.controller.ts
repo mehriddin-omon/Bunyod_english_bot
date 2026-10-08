@@ -58,7 +58,7 @@ export class VocabularyStudentController {
 
   /**
    * GET /vocabulary?lessonId=&sectionId=&status=new,learning&preset=hard
-   * `preset` — hard | overdue | today | new (qoidalar statistika bilan bir xil)
+   * `preset` — hard | overdue | today | new | priority (qoidalar statistika bilan bir xil)
    */
   @Get()
   getVocabulary(

@@ -5,7 +5,11 @@ import {
 import { Type } from 'class-transformer';
 import { PracticeMode } from 'src/common/core/entitys/vocabulary-practice-log.entity';
 
-export type SessionFilter = 'hard' | 'overdue' | 'today' | 'new' | 'custom';
+/**
+ * `priority` — Lug'at ro'yxatining standart holati: qiynalgan → uzoq
+ * takrorlanmagan → bugun takrorlash → yangi so'zlar, shu KETMA-KETLIKDA.
+ */
+export type SessionFilter = 'hard' | 'overdue' | 'today' | 'new' | 'priority' | 'custom';
 /**
  * Savol turi. "Aralash" (`mixed`) rejimi 2026-09 da olib tashlandi — lug'at
  * endi bosqichma-bosqich yodlanadi (`VOCAB_STAGES`, vocabulary.service.ts).
@@ -13,7 +17,7 @@ export type SessionFilter = 'hard' | 'overdue' | 'today' | 'new' | 'custom';
 export type SessionMode   = 'flashcard' | 'multiple_choice' | 'typing' | 'audio';
 
 export class StartSessionDto {
-  @IsIn(['hard', 'overdue', 'today', 'new', 'custom'])
+  @IsIn(['hard', 'overdue', 'today', 'new', 'priority', 'custom'])
   filter: SessionFilter;
 
   /**

@@ -263,8 +263,15 @@ export class GroupService {
   }
 
   async deleteGroup(groupId: string) {
+    // A'zolar o'chirishdan OLDIN olinadi — keyin ularga xabar yuboriladi
+    const group = await this.groupRepo.findOne({ where: { id: groupId }, relations: ['members'] });
+    if (!group) throw new NotFoundException('Group not found');
+
+    const memberIds = group.members.map((m) => m.id);
     const result = await this.groupRepo.delete(groupId);
     if (result.affected === 0) throw new NotFoundException('Group not found');
+
+    await this.notifyStudentsRemoved(memberIds, group.id, group.name, true);
   }
 
   async addStudents(groupId: string, dto: AddStudentsDto) {
@@ -288,9 +295,13 @@ export class GroupService {
     const group = await this.groupRepo.findOne({ where: { id: groupId }, relations: ['members'] });
     if (!group) throw new NotFoundException('Group not found');
 
+    const wasMember = group.members.some((m) => m.id === studentId);
     group.members = group.members.filter((m) => m.id !== studentId);
     await this.groupRepo.save(group);
     await this.settingsRepo.delete({ groupId, userId: studentId });
+
+    // Faqat haqiqatan a'zo bo'lgan bo'lsa — takroriy so'rovda ikkinchi xabar ketmasin
+    if (wasMember) await this.notifyStudentsRemoved([studentId], group.id, group.name);
 
     return { message: "O'quvchi guruhdan chiqarildi" };
   }
@@ -426,6 +437,29 @@ export class GroupService {
         type: NotificationType.system,
         title: "Guruhga qo'shildingiz",
         body: `Siz "${groupName}" guruhiga qo'shildingiz`,
+        referenceId: groupId,
+        referenceType: 'group',
+      }),
+    );
+    await this.notificationRepo.save(notifications);
+  }
+
+  /** Guruhdan chiqarilganda (yoki guruh o'chirilganda) studentga xabar */
+  private async notifyStudentsRemoved(
+    studentIds: string[],
+    groupId: string,
+    groupName: string,
+    groupDeleted = false,
+  ) {
+    if (!studentIds.length) return;
+    const notifications = studentIds.map((uId) =>
+      this.notificationRepo.create({
+        userId: uId,
+        type: NotificationType.system,
+        title: groupDeleted ? 'Guruh yopildi' : 'Guruhdan chiqarildingiz',
+        body: groupDeleted
+          ? `"${groupName}" guruhi yopildi. Siz endi bu guruh a'zosi emassiz`
+          : `Siz "${groupName}" guruhidan chiqarildingiz`,
         referenceId: groupId,
         referenceType: 'group',
       }),

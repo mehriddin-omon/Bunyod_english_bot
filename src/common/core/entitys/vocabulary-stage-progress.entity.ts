@@ -8,9 +8,9 @@ import { Lesson } from './lesson.entity';
  *
  * Bir qator = talaba × dars × bosqich. Bosqichlar ketma-ket ochiladi
  * (qoidalar `VOCAB_STAGES` da, `vocabulary.service.ts`):
- *   1 — oddiy karta (flashcard), oxirigacha ko'rilsa o'tildi
- *   2 — variantli test, 80%+
- *   3 — eshitib topish (audio), 80%+
+ *   1 — variantli test, 80%+
+ *   2 — eshitib topish (audio), 80%+
+ *   3 — karta (flashcard), oxirigacha ko'rilsa o'tildi
  *   4 — yozib yodlash (typing), 80%+
  *
  * `passed` bir marta `true` bo'lsa qaytib `false` bo'lmaydi — keyingi

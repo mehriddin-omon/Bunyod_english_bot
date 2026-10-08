@@ -56,6 +56,12 @@ export class UserService {
       if (query.role) qb.andWhere('user.role = :role', { role: query.role });
     }
 
+    // Mehmon akkauntlar (ilovada login qilmay boshlaganlar) ro'yxatni
+    // to'ldirib yubormasin: standart holatda yashiriladi.
+    // ?guests=include — hammasi, ?guests=only — faqat mehmonlar
+    if (query.guests === 'only') qb.andWhere('user.isGuest = true');
+    else if (query.guests !== 'include') qb.andWhere('user.isGuest = false');
+
     if (query.groupId) {
       qb.andWhere(
         'user.id IN (SELECT user_id FROM group_members WHERE group_id = :groupId)',
@@ -196,6 +202,7 @@ export class UserService {
       email: user.email,
       avatarUrl: user.avatarUrl,
       role: user.role,
+      isGuest: user.isGuest,
       createdAt: user.createdAt,
     };
   }

@@ -49,6 +49,14 @@ export class User extends BaseEntity {
   @Column({ type: 'boolean', name: 'is_active', default: true })
   isActive: boolean;
 
+  /**
+   * Mehmon akkaunt (2026-10): ilovada "Boshlash" bosilganda login/parolsiz
+   * avtomatik yaratiladi. Foydalanuvchi "Akkauntni saqlash" orqali login va
+   * parol qo'ygach false bo'ladi — progress o'sha akkauntda qoladi.
+   */
+  @Column({ type: 'boolean', name: 'is_guest', default: false })
+  isGuest: boolean;
+
   @Column({ type: 'text', name: 'refresh_token', nullable: true })
   refreshToken: string | null;
 

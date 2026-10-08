@@ -162,6 +162,58 @@ export class HomeService {
     };
   }
 
+  /**
+   * Reyting (jami coin = user_gamification.xp_total bo'yicha).
+   * O'rin = o'zidan KO'P coinli o'quvchilar soni + 1 (teng coinlilar bir xil o'rinda).
+   * Umumiy reytingga faqat faol, mehmon bo'lmagan studentlar kiradi
+   * (mehmon o'zi ko'radi — o'zi hisobga qo'shiladi).
+   */
+  async getRating(userId: string) {
+    const me = await this.gamificationRepo.findOne({ where: { userId } });
+    const myCoins = me?.xpTotal ?? 0;
+
+    const rankQuery = async (groupId: string | null) => {
+      const params: any[] = [userId, myCoins];
+      let join = '';
+      if (groupId) {
+        params.push(groupId);
+        join = 'INNER JOIN group_members gm ON gm.user_id = u.id AND gm.group_id = $3';
+      }
+      const [row] = await this.gamificationRepo.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE COALESCE(g.xp_total, 0) > $2)::int AS ahead,
+           COUNT(*)::int AS total,
+           MIN(COALESCE(g.xp_total, 0)) FILTER (WHERE COALESCE(g.xp_total, 0) > $2)::int AS next_coins
+         FROM users u
+         LEFT JOIN user_gamification g ON g.user_id = u.id
+         ${join}
+         WHERE u.role = 'student' AND u.is_active = true AND (u.is_guest = false OR u.id = $1)`,
+        params,
+      );
+      const total = Math.max(Number(row?.total ?? 0), 1);
+      const rank = Number(row?.ahead ?? 0) + 1;
+      return {
+        rank,
+        total,
+        // keyingi (yuqoridagi) o'ringa chiqish uchun kerak bo'lgan coin; 1-o'rinda null
+        coinsToNext: row?.next_coins != null ? Number(row.next_coins) - myCoins + 1 : null,
+      };
+    };
+
+    const group = await this.lessonGatingService.findStudentGroup(userId);
+
+    const [overall, inGroup] = await Promise.all([
+      rankQuery(null),
+      group ? rankQuery(group.id) : Promise.resolve(null),
+    ]);
+
+    return {
+      coins: myCoins,
+      group: group && inGroup ? { groupId: group.id, groupName: group.name, ...inGroup } : null,
+      overall,
+    };
+  }
+
   async getStreak(userId: string) {
     const gamification = await this.gamificationRepo.findOne({ where: { userId } });
 

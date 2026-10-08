@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, UseGuards, Req, Query } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
   LoginDto,
@@ -7,6 +7,7 @@ import {
   UpdateProfileDto,
   DeleteAccountDto,
   DeleteAccountByCredentialsDto,
+  UpgradeAccountDto,
 } from './dto/auth.dto';
 import { Public } from 'src/common/decorators/jwt-public.decorator';
 import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
@@ -20,6 +21,23 @@ export class AuthController {
   @Post('register')
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  /**
+   * Ilovada "Boshlash" — login/parolsiz mehmon student yaratadi.
+   * IP bo'yicha cheklangan (AuthService.assertGuestRateLimit).
+   */
+  @Public()
+  @Post('guest')
+  async guest(@Req() req: any) {
+    const forwarded = String(req.headers?.['x-forwarded-for'] ?? '').split(',')[0].trim();
+    return this.authService.createGuest(forwarded || req.ip || 'unknown');
+  }
+
+  /** Mehmon akkauntga login/parol qo'yib, uni oddiy akkauntga aylantiradi */
+  @Post('upgrade')
+  async upgrade(@Req() req: any, @Body() dto: UpgradeAccountDto) {
+    return this.authService.upgradeGuest(req.user.sub, dto);
   }
 
   @Public()
@@ -42,6 +60,12 @@ export class AuthController {
   @Get('me')
   async getMe(@Req() req: any) {
     return this.authService.getMe(req.user.sub);
+  }
+
+  /** Profil tahrirlashda: `?username=` boshqa foydalanuvchida bormi (o'zinikidan tashqari) */
+  @Get('username-available')
+  async usernameAvailable(@Req() req: any, @Query('username') username: string) {
+    return this.authService.checkUsername(req.user.sub, username);
   }
 
   @Patch('me')

@@ -20,6 +20,12 @@ export class HomeController {
     return this.homeService.getStreak(req.user.sub);
   }
 
+  /** GET /home/rating — guruhdagi va umumiy reyting (jami coin bo'yicha) */
+  @Get('rating')
+  async getRating(@Req() req: any) {
+    return this.homeService.getRating(req.user.sub);
+  }
+
   /** GET /home/current-lesson */
   @Get('current-lesson')
   async getCurrentLesson(@Req() req: any) {
