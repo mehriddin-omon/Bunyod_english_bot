@@ -37,33 +37,34 @@ export interface AppRelease {
   notes: ReleaseNote[];
 }
 
-export const ANDROID_RELEASES: AppRelease[] = [
+/** 1.1.0 dagi yangiliklar — 1.1.1 da ham ko'rsatiladi (1.1.0 production'ga chiqmagan,
+ *  foydalanuvchilar 1.0.x dan to'g'ridan-to'g'ri 1.1.1 ga o'tadi). */
+const NOTES_1_1: ReleaseNote[] = [
   {
-    versionCode: 4,
-    versionName: '1.1.0',
-    notes: [
-      {
-        icon: 'rating',
-        title: "Reyting bo'limi",
-        text: "Guruhdoshlar bilan bellashing — har hafta top 3 keyingi ligaga chiqadi.",
-      },
-      {
-        icon: 'dictionary',
-        title: "Oflayn lug'at",
-        text: "So'zlarni internetsiz qidiring, talaffuzini tinglang va saqlab qo'ying.",
-      },
-      {
-        icon: 'offline',
-        title: 'Internetsiz darslar',
-        text: 'Bir marta ochilgan dars, audio va rasmlar keyin internetsiz ham ochiladi.',
-      },
-      {
-        icon: 'fix',
-        title: 'Tuzatishlar',
-        text: 'Bir nechta xatolar tuzatildi, ilova tezroq ishlaydi.',
-      },
-    ],
+    icon: 'rating',
+    title: "Reyting bo'limi",
+    text: "Guruhdoshlar bilan bellashing — har hafta top 3 keyingi ligaga chiqadi.",
   },
+  {
+    icon: 'dictionary',
+    title: "Oflayn lug'at",
+    text: "So'zlarni internetsiz qidiring, talaffuzini tinglang va saqlab qo'ying.",
+  },
+  {
+    icon: 'offline',
+    title: 'Internetsiz darslar',
+    text: 'Bir marta ochilgan dars, audio va rasmlar keyin internetsiz ham ochiladi.',
+  },
+  {
+    icon: 'fix',
+    title: 'Tuzatishlar',
+    text: 'Bir nechta xatolar tuzatildi, ilova tezroq ishlaydi.',
+  },
+];
+
+export const ANDROID_RELEASES: AppRelease[] = [
+  { versionCode: 5, versionName: '1.1.1', notes: NOTES_1_1 },
+  { versionCode: 4, versionName: '1.1.0', notes: NOTES_1_1 },
 ];
 
 export const IOS_RELEASES: AppRelease[] = [];
