@@ -101,3 +101,54 @@ export class UserSkill extends BaseEntity {
   @Column({ type: 'int', name: 'words_count', nullable: true, comment: 'Faqat vocabulary skill uchun' })
   wordsCount: number;
 }
+
+/**
+ * REYTING — HAFTA YAKUNI (2026-10).
+ *
+ * Har guruhning o'tgan haftasi BIR MARTA "yopiladi" (lazy: guruhdan kimdir
+ * reytingni yoki hafta natijasini so'raganda): o'rinlar shu jadvalga yoziladi,
+ * top 3 (coini > 0) bir liga yuqoriga chiqadi. Tushish yo'q («Iliq o'sish»).
+ *
+ * Haftalik coin `xp_transactions` dan (Toshkent vaqti, dushanba 00:00) hisoblanadi —
+ * `user_gamification.xp_weekly` haftada nollanmaydi, unga tayanilmaydi.
+ * `rank` keyingi haftada "▲/▼ o'rin o'zgarishi" uchun ham ishlatiladi.
+ */
+@Entity({ name: 'rating_week_results' })
+@Index('IDX_rating_week_results_user_week', ['userId', 'weekStart'], { unique: true })
+@Index('IDX_rating_week_results_group_week', ['groupId', 'weekStart'])
+export class RatingWeekResult extends BaseEntity {
+  @Column({ type: 'uuid', name: 'user_id' })
+  userId: string;
+
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  user: User;
+
+  @Column({ type: 'uuid', name: 'group_id' })
+  groupId: string;
+
+  /** Hafta boshlangan dushanba (Toshkent sanasi) */
+  @Column({ type: 'date', name: 'week_start' })
+  weekStart: string;
+
+  @Column({ type: 'int', name: 'rank' })
+  rank: number;
+
+  @Column({ type: 'int', name: 'total' })
+  total: number;
+
+  @Column({ type: 'int', name: 'coins' })
+  coins: number;
+
+  @Column({ type: 'varchar', name: 'league_before', enum: League })
+  leagueBefore: League;
+
+  @Column({ type: 'varchar', name: 'league_after', enum: League })
+  leagueAfter: League;
+
+  @Column({ type: 'boolean', name: 'promoted', default: false })
+  promoted: boolean;
+
+  /** Talaba "Hafta yakuni" oynasini ko'rgan vaqt — null bo'lsa oyna chiqadi */
+  @Column({ type: 'timestamptz', name: 'seen_at', nullable: true })
+  seenAt: Date | null;
+}

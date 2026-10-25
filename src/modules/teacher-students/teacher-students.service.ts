@@ -381,7 +381,7 @@ export class TeacherStudentsService {
     const qb = this.pendingReviewsQb(userId, role)
       .leftJoin('s.assignment', 'a')
       .leftJoin('s.student', 'st')
-      .addSelect(['a.id', 'a.title', 'a.type', 'st.id', 'st.firstName', 'st.lastName'])
+      .addSelect(['a.id', 'a.title', 'a.type', 'st.id', 'st.firstName', 'st.lastName', 'st.avatarUrl'])
       // DIQQAT: orderBy'da ustun nomi emas, entity property nomi bo'lishi shart.
       // take/skip bilan birga TypeORM tartibni metadata orqali qidiradi va
       // 'submitted_at' kabi ustun nomida "Cannot read ... 'databaseName'" beradi.
@@ -399,6 +399,7 @@ export class TeacherStudentsService {
         type: s.assignment?.type ?? null,
         studentId: s.studentId,
         studentName: `${s.student?.firstName ?? ''} ${s.student?.lastName ?? ''}`.trim(),
+        studentAvatarUrl: s.student?.avatarUrl ?? null,
         submittedAt: s.submittedAt ? s.submittedAt.toISOString() : null,
         submittedLabel: relativeLabel(s.submittedAt ?? null),
       })),

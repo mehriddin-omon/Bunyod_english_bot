@@ -57,6 +57,7 @@ export class GamificationService {
         firstName,
         lastName,
         initials: `${(firstName[0] ?? ' ')}${(lastName[0] ?? ' ')}`.toUpperCase(),
+        avatarUrl: member.avatarUrl ?? null,
         level: gamification.level,
         xpInLevel: Math.round(((gamification.xpTotal % 100) / 100) * 100),
         totalXp: gamification.xpTotal,

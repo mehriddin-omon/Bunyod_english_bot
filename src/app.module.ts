@@ -22,6 +22,7 @@ import { SectionsModule } from './modules/sections/sections.module';
 import { HomeModule } from './modules/home/home.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { ExerciseResultsModule } from './modules/exercise-results/exercise-results.module';
+import { AppVersionModule } from './modules/app-version/app-version.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { ExerciseResultsModule } from './modules/exercise-results/exercise-resul
     HomeModule,
     UploadModule,
     ExerciseResultsModule,
+    AppVersionModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: ResponseTransformInterceptor },
