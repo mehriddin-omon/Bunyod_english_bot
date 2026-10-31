@@ -10,6 +10,7 @@ import { ExerciseItem, ExerciseOption } from 'src/common/core/entitys/exercise-i
 import { StudentAnswer } from 'src/common/core/entitys/student-answer.entity';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
 import { UserGamification } from 'src/common/core/entitys/gamification.entity';
+import { LessonScoreService } from 'src/common/services/lesson-score.service';
 import {
   LessonProgressStatus,
   QuizExerciseType,
@@ -76,6 +77,8 @@ export class StudentAnswersService {
 
     @InjectRepository(UserGamification)
     private readonly gamificationRepo: Repository<UserGamification>,
+
+    private readonly lessonScore: LessonScoreService,
   ) {}
 
   // ── umumiy yordamchilar ────────────────────────────────────────────
@@ -129,19 +132,10 @@ export class StudentAnswersService {
     }
     progress[field] = percent;
 
-    // Umumiy `score`ni topshirilgan bloklar ballari o'rtachasidan yangilaymiz.
-    // Shu tufayli talaba darsni "yakunlash"ni bosmasa ham, teacher paneli va
-    // shaxsiy statistikadagi o'rtacha ball haqiqiy ishlangan mashqlarni aks
-    // ettiradi (avval faqat dars yakunlanganda to'ldirilar edi → 0% ko'rinardi).
-    const blockScores = [
-      progress.quizScore,
-      progress.readingScore,
-      progress.listeningScore,
-      progress.grammarScore,
-    ].filter((s): s is number => s != null);
-    if (blockScores.length) {
-      progress.score = Math.round(blockScores.reduce((a, b) => a + b, 0) / blockScores.length);
-    }
+    // Umumiy `score` — yagona formula (utils/lesson-score.ts): bo'limlar o'rtachasi,
+    // statik grammatika mashqlari ham kiradi. Dars yakunlangan bo'lsa ham yangilanadi.
+    const score = await this.lessonScore.compute(userId, lessonId, progress);
+    if (score != null) progress.score = score;
 
     await this.progressRepo.save(progress);
 

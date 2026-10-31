@@ -11,10 +11,12 @@ import { GroupService } from './group.service';
 import { GroupPanelsService } from './group-panels.service';
 import { GroupController } from './group.controller';
 import { LessonGatingModule } from 'src/common/services/lesson-gating.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     LessonGatingModule,
+    NotificationsModule,
     TypeOrmModule.forFeature([
       Group,
       User,

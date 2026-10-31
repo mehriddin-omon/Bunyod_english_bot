@@ -19,6 +19,7 @@ import {
   UnlockNextDto,
 } from './dto/group.dto';
 import { LessonGatingService } from 'src/common/services/lesson-gating.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class GroupService {
@@ -45,6 +46,8 @@ export class GroupService {
     private readonly settingsRepo: Repository<GroupMemberSettings>,
 
     private readonly lessonGatingService: LessonGatingService,
+
+    private readonly notifications: NotificationsService,
   ) {}
 
   async getAllGroups(userId: string, role: string) {
@@ -262,10 +265,14 @@ export class GroupService {
     return this.groupRepo.save(group);
   }
 
-  async deleteGroup(groupId: string) {
+  async deleteGroup(groupId: string, userId: string, role: string) {
     // A'zolar o'chirishdan OLDIN olinadi — keyin ularga xabar yuboriladi
     const group = await this.groupRepo.findOne({ where: { id: groupId }, relations: ['members'] });
-    if (!group) throw new NotFoundException('Group not found');
+    if (!group) throw new NotFoundException('Guruh topilmadi');
+
+    if (role === Role.teacher && group.teacherId !== userId) {
+      throw new ForbiddenException("Faqat o'zingizning guruhingizni o'chira olasiz");
+    }
 
     const memberIds = group.members.map((m) => m.id);
     const result = await this.groupRepo.delete(groupId);
@@ -431,17 +438,16 @@ export class GroupService {
   }
 
   private async notifyStudents(studentIds: string[], groupId: string, groupName: string) {
-    const notifications = studentIds.map((uId) =>
-      this.notificationRepo.create({
-        userId: uId,
-        type: NotificationType.system,
-        title: "Guruhga qo'shildingiz",
-        body: `Siz "${groupName}" guruhiga qo'shildingiz`,
-        referenceId: groupId,
-        referenceType: 'group',
-      }),
-    );
-    await this.notificationRepo.save(notifications);
+    // 2026-11: yagona `notify()` — ro'yxatga yoziladi va push ham ketadi
+    await this.notifications.notify(studentIds, {
+      type: NotificationType.system,
+      title: "Guruhga qo'shildingiz",
+      body: `Siz "${groupName}" guruhiga qo'shildingiz`,
+      referenceId: groupId,
+      referenceType: 'group',
+      action: { type: 'chat', id: groupId, label: groupName },
+      channel: 'teacher',
+    });
   }
 
   /** Guruhdan chiqarilganda (yoki guruh o'chirilganda) studentga xabar */
@@ -452,18 +458,15 @@ export class GroupService {
     groupDeleted = false,
   ) {
     if (!studentIds.length) return;
-    const notifications = studentIds.map((uId) =>
-      this.notificationRepo.create({
-        userId: uId,
-        type: NotificationType.system,
-        title: groupDeleted ? 'Guruh yopildi' : 'Guruhdan chiqarildingiz',
-        body: groupDeleted
-          ? `"${groupName}" guruhi yopildi. Siz endi bu guruh a'zosi emassiz`
-          : `Siz "${groupName}" guruhidan chiqarildingiz`,
-        referenceId: groupId,
-        referenceType: 'group',
-      }),
-    );
-    await this.notificationRepo.save(notifications);
+    await this.notifications.notify(studentIds, {
+      type: NotificationType.system,
+      title: groupDeleted ? 'Guruh yopildi' : 'Guruhdan chiqarildingiz',
+      body: groupDeleted
+        ? `"${groupName}" guruhi yopildi. Siz endi bu guruh a'zosi emassiz`
+        : `Siz "${groupName}" guruhidan chiqarildingiz`,
+      referenceId: groupId,
+      referenceType: 'group',
+      channel: 'teacher',
+    });
   }
 }

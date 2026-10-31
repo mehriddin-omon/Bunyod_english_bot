@@ -11,6 +11,7 @@ import { networkInterfaces } from 'os';
 import { ensureQuizEnum } from './database/ensure-quiz-enum';
 import { ensureStudentAnswersMigrated } from './database/ensure-student-answers';
 import { ensureExercisesUnified } from './database/ensure-exercises-unified';
+import { ensureVocabSets } from './database/ensure-vocab-sets';
 // import { UUIDInterceptor } from 'src/infrastructure';
 
 export default class Application {
@@ -18,7 +19,7 @@ export default class Application {
 
   public static async main(): Promise<void> {
     const uploadsDir = join(process.cwd(), 'uploads');
-    for (const sub of ['audio', 'images', 'videos', 'documents']) {
+    for (const sub of ['audio', 'images', 'videos', 'documents', 'speaking']) {
       const dir = join(uploadsDir, sub);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     }
@@ -29,10 +30,13 @@ export default class Application {
     // savollarini yagona tizimga ko'chirish (synchronize'dan OLDIN)
     await ensureExercisesUnified();
 
-    const app = await NestFactory.create<NestExpressApplication>(AppModule);
+    // rawBody — Zoom webhook imzosini tekshirish uchun (src/modules/online-lessons)
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
 
     // synchronize student_answers ni yaratganidan keyin eski javoblarni ko'chiramiz
     await ensureStudentAnswersMigrated();
+    // lug'at to'plamlari: vocab_visible() funksiyasi va mixlash jadvali
+    await ensureVocabSets();
 
     app.useStaticAssets(uploadsDir, { prefix: '/uploads' });
     const environment = config.NODE_ENV || 'development';

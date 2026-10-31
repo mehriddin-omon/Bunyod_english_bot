@@ -12,6 +12,7 @@ import { QuizContent } from 'src/common/core/entitys/quiz-content.entity';
 import { Exercise } from 'src/common/core/entitys/exercise.entity';
 import { Vocabulary } from 'src/common/core/entitys/vocabulary.entity';
 import { XpTransaction } from 'src/common/core/entitys/gamification.entity';
+import { LessonGatingService } from 'src/common/services/lesson-gating.service';
 import { LessonProgressStatus, LessonStatus, Role, StudentAnswerBlockType, XpSource } from 'src/common/utils/enum';
 
 /** Dars-oldi ekranidagi bo'lim turlari (ilova tablari bilan bir xil) */
@@ -86,6 +87,8 @@ export class LessonsService {
 
     @InjectRepository(XpTransaction)
     private readonly xpRepo: Repository<XpTransaction>,
+
+    private readonly lessonGating: LessonGatingService,
   ) { }
 
   /** Berilgan blok(lar) uchun exercises ni yagona formatda oladi (student output, quiz.md 5.3). */
@@ -375,7 +378,7 @@ export class LessonsService {
          FROM vocabulary_relations r
          JOIN vocabularys v ON v.id = r.vocabulary_id AND v.lang = 'en'
     LEFT JOIN user_vocabulary_progress uvp ON uvp.pair_id = r.id AND uvp.user_id = $1
-        WHERE v.lesson_id = ANY($2::uuid[])
+        WHERE v.lesson_id = ANY($2::uuid[]) AND vocab_visible($1, v.lesson_id, v.set_no)
         GROUP BY v.lesson_id`,
       [userId, lessonIds],
     );
@@ -406,7 +409,7 @@ export class LessonsService {
       ['reading', this.readingRepo],
       ['listening', this.listeningRepo],
       ['quiz', this.quizRepo],
-      ['vocabulary', this.vocabularyRepo, "b.lang = 'en'"],
+      ['vocabulary', this.vocabularyRepo, "b.lang = 'en' AND b.set_no = (SELECT l.vocab_set_no FROM lessons l WHERE l.id = b.lesson_id)"],
     ];
 
     const results = await Promise.all(
@@ -447,7 +450,7 @@ export class LessonsService {
     // Diqqat (perf): hech qayerda "har dars uchun bitta so'rov" yo'q. Bloklar
     // soni, progress va XP — hammasi lessonIds bo'yicha yig'ma so'rovlar bilan
     // olinadi, shuning uchun 5 ta darsda ham 50 ta darsda ham so'rov soni bir xil.
-    const [blockCounts, progressRows, xpRows, exerciseProgress, vocabProgress] = await Promise.all([
+    const [blockCounts, progressRows, xpRows, exerciseProgress, vocabProgress, guestOpen, lockedIds] = await Promise.all([
       this.blockCountsByLesson(lessonIds),
       userId
         ? this.progressRepo.find({ where: { userId, lessonId: In(lessonIds) } })
@@ -461,6 +464,10 @@ export class LessonsService {
       userId
         ? this.vocabProgressByLesson(userId, lessonIds)
         : Promise.resolve(new Map<string, SectionProgress>()),
+      // Mehmon bo'lsa — unga ochiq darslar (birinchi 3 ta); aks holda null
+      this.lessonGating.getGuestOpenLessonIds(userId),
+      // Ketma-ket qulf: oldingi dars tugatilmaguncha yopiq darslar (talaba bo'lmasa null)
+      this.lessonGating.getLockedLessonIds(userId),
     ]);
 
     const progressByLesson = new Map(progressRows.map((p) => [p.lessonId, p]));
@@ -485,6 +492,10 @@ export class LessonsService {
       ),
       /** shu darsdan to'plangan XP */
       xp_earned: xpByLesson.get(lesson.id) ?? 0,
+      /** mehmon akkauntga yopiq — ochish uchun akkauntni saqlash kerak */
+      guest_locked: guestOpen ? !guestOpen.has(lesson.id) : false,
+      /** oldingi dars tugatilmagan — ketma-ket qulf (talaba uchun) */
+      locked: lockedIds ? lockedIds.has(lesson.id) : false,
     }));
   }
 
@@ -682,6 +693,8 @@ export class LessonsService {
       quizCount,
       exerciseProgress,
       vocabProgress,
+      guestOpen,
+      lockedIds,
     ] = await Promise.all([
       this.progressRepo.findOne({ where: { userId, lessonId } }),
       this.grammarRepo.count({ where: { lessonId } }),
@@ -691,6 +704,8 @@ export class LessonsService {
       this.exerciseProgressByLesson(userId, [lessonId]),
       // Lug'at soni ham shu yerdan: juftliklar soni (ilovadagi tab bilan bir xil)
       this.vocabProgressByLesson(userId, [lessonId]),
+      this.lessonGating.getGuestOpenLessonIds(userId),
+      this.lessonGating.getLockedLessonIds(userId),
     ]);
 
     const grammarExercises = exerciseProgress.get(lessonId)?.get('grammar');
@@ -772,6 +787,13 @@ export class LessonsService {
       userProgress: progress
         ? { status: progress.status, score: progress.score, attempts: progress.attempts, timeSpent: progress.timeSpentSec }
         : null,
+      /**
+       * Mehmon akkauntga yopiq dars: sarlavha va bo'limlar ko'rinadi, lekin kontent
+       * endpointlari 403 (GUEST_LESSON_LIMIT) beradi — ilova «Akkauntni saqlang» ko'rsatadi.
+       */
+      guestLocked: guestOpen ? !guestOpen.has(lessonId) : false,
+      /** ketma-ket qulf: oldingi dars tugatilmagan (talaba uchun) */
+      locked: lockedIds ? lockedIds.has(lessonId) : false,
     };
   }
 }

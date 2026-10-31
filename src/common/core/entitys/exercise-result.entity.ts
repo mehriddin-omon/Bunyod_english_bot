@@ -4,6 +4,20 @@ import { User } from './user.entity';
 import { Lesson } from './lesson.entity';
 
 /**
+ * Bitta savol natijasi (ilova «Tekshirish» paytida yuboradi). Teacher panel
+ * «qaysi savolda xato qildi»ni shundan ko'radi.
+ *  - q        — savol/gap matni, bo'shliq «___» bilan
+ *  - given    — talaba javobi (bo'sh qoldirgan bo'lsa null)
+ *  - expected — to'g'ri javob (bir nechta bo'lsa namunasi)
+ */
+export interface ExerciseAnswerItem {
+  q: string;
+  given: string | null;
+  expected: string;
+  ok: boolean;
+}
+
+/**
  * STATIK mashqlar natijalari (yangi oqim).
  *
  * Mashq kontenti endi mobil ilova ichida statik saqlanadi — backend faqat
@@ -73,6 +87,14 @@ export class ExerciseResult extends BaseEntity {
    */
   @Column({ type: 'int', name: 'section_total', nullable: true })
   sectionTotal: number | null;
+
+  /** Mashq nomi (ilova registridagi titleUz) — eski ilovadan kelsa NULL */
+  @Column({ type: 'varchar', length: 200, name: 'title', nullable: true })
+  title: string | null;
+
+  /** Savollar bo'yicha natija — faqat 1.2.x+ ilovadan keladi, eskilarida NULL */
+  @Column({ type: 'jsonb', name: 'items', nullable: true })
+  items: ExerciseAnswerItem[] | null;
 
   /** Mashq qachon ishlangan (ilovadagi vaqt — offline'da keyin sync bo'ladi) */
   @Column({ type: 'timestamptz', name: 'answered_at' })

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Not, Repository } from 'typeorm';
 import { Group } from 'src/common/core/entitys/group.entity';
@@ -7,7 +7,27 @@ import { ScheduleSession } from 'src/common/core/entitys/schedule.entity';
 import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
 import { Unit } from 'src/common/core/entitys/unit.entity';
-import { LessonStatus, SessionStatus } from 'src/common/utils/enum';
+import { User } from 'src/common/core/entitys/user.entity';
+import { LessonProgressStatus, LessonStatus, Role, SessionStatus } from 'src/common/utils/enum';
+
+/**
+ * MEHMON CHEGARASI: login/parolsiz («Boshlash» bilan ochilgan) akkauntga kursning
+ * faqat BIRINCHI N ta darsi ochiq (global tartib: bo'lim raqami, keyin dars tartibi).
+ * Qolganini ko'rish uchun akkauntni saqlash kerak (`POST /auth/upgrade`) — ID
+ * o'zgarmaydi, saqlangan zahoti hamma dars ochiladi.
+ */
+export const GUEST_LESSON_LIMIT = 3;
+/** Ilova shu kod bo'yicha «Akkauntni saqlang» ekranini ko'rsatadi */
+export const GUEST_LESSON_LIMIT_CODE = 'GUEST_LESSON_LIMIT';
+export const GUEST_LESSON_LIMIT_MESSAGE =
+  `Mehmon rejimida faqat dastlabki ${GUEST_LESSON_LIMIT} ta dars ochiq. Davom etish uchun akkauntingizni saqlang.`;
+
+/**
+ * KETMA-KET QULF: hamma darslar yopiq turadi — talaba oldingi darsni TUGATMASA
+ * keyingisi ochilmaydi. Ilova shu kod bo'yicha «Oldingi darsni tugating» holatini ko'rsatadi.
+ */
+export const LESSON_LOCKED_CODE = 'LESSON_LOCKED';
+export const LESSON_LOCKED_MESSAGE = "Oldingi darsni tugatmasdan bu darsga o'ta olmaysiz";
 
 export interface EffectiveCeiling {
   /** null = cheklanmagan (guruhsiz yoki "erkin" talaba) */
@@ -40,7 +60,71 @@ export class LessonGatingService {
 
     @InjectRepository(LessonProgress)
     private readonly progressRepo: Repository<LessonProgress>,
+
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
+
+  /**
+   * Mehmon uchun OCHIQ darslar (birinchi GUEST_LESSON_LIMIT ta). Mehmon bo'lmasa — null
+   * (cheklov yo'q). Ro'yxatda yo'q har qanday dars (keyingilari, nashr qilinmaganlari)
+   * mehmonga yopiq.
+   */
+  async getGuestOpenLessonIds(userId?: string | null): Promise<Set<string> | null> {
+    if (!userId) return null;
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: { id: true, isGuest: true } });
+    if (!user?.isGuest) return null;
+    const order = await this.getPublishedLessonOrder();
+    return new Set(order.slice(0, GUEST_LESSON_LIMIT).map((l) => l.id));
+  }
+
+  /** Mehmon yopiq darsga kirsa 403 + `code: GUEST_LESSON_LIMIT` (ilova shundan «saqlash» ekranini ochadi) */
+  async assertGuestLessonAccess(userId: string, lessonId: string): Promise<void> {
+    const open = await this.getGuestOpenLessonIds(userId);
+    if (open && !open.has(lessonId)) {
+      throw new ForbiddenException({ code: GUEST_LESSON_LIMIT_CODE, message: GUEST_LESSON_LIMIT_MESSAGE });
+    }
+  }
+
+  /**
+   * KETMA-KET QULF (faqat talaba). Global tartibda (bo'lim raqami, keyin dars tartibi)
+   * YOPIQ darslar id'lari. Qoida: birinchi tugatilmagan darsgacha hammasi ochiq, undan
+   * keyingilari yopiq. Allaqachon tugatilgan dars doim ochiq qoladi (qayta ko'rish mumkin).
+   * Talaba bo'lmasa (teacher/admin) — null (cheklov yo'q).
+   */
+  async getLockedLessonIds(userId?: string | null): Promise<Set<string> | null> {
+    if (!userId) return null;
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: { id: true, role: true } });
+    if (!user || user.role !== Role.student) return null;
+
+    const order = await this.getPublishedLessonOrder();
+    if (order.length === 0) return new Set();
+    const completed = await this.getCompletedLessonIds(userId);
+
+    const firstOpenIndex = order.findIndex((l) => !completed.has(l.id));
+    const locked = new Set<string>();
+    if (firstOpenIndex === -1) return locked; // hammasi tugatilgan
+    for (let i = firstOpenIndex + 1; i < order.length; i++) {
+      if (!completed.has(order[i].id)) locked.add(order[i].id);
+    }
+    return locked;
+  }
+
+  /** Talaba yopiq darsga kirsa 403 + `code: LESSON_LOCKED` (kontent, javob yuborish, boshlash, yakunlash) */
+  async assertSequentialAccess(userId: string, lessonId: string): Promise<void> {
+    const locked = await this.getLockedLessonIds(userId);
+    if (locked?.has(lessonId)) {
+      throw new ForbiddenException({ code: LESSON_LOCKED_CODE, message: LESSON_LOCKED_MESSAGE });
+    }
+  }
+
+  async getCompletedLessonIds(userId: string): Promise<Set<string>> {
+    const rows = await this.progressRepo.find({
+      where: { userId, status: LessonProgressStatus.completed },
+      select: { id: true, lessonId: true },
+    });
+    return new Set(rows.map((r) => r.lessonId));
+  }
 
   /**
    * Berilgan dars talaba uchun QACHON OCHILGAN (null — hali ochilmagan).

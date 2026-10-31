@@ -14,6 +14,8 @@ import { TeacherLessonsService } from './teacher-lessons.service';
 import { BlocksService } from './blocks.service';
 import { TeacherLessonsController } from './teacher-lessons.controller';
 import { BlocksController } from './blocks.controller';
+import { TeacherUnitsController } from './teacher-units.controller';
+import { TeacherUnitsService } from './teacher-units.service';
 
 @Module({
   imports: [
@@ -30,7 +32,8 @@ import { BlocksController } from './blocks.controller';
       ExerciseItem,
     ]),
   ],
-  providers: [TeacherLessonsService, BlocksService],
-  controllers: [TeacherLessonsController, BlocksController],
+  providers: [TeacherLessonsService, BlocksService, TeacherUnitsService],
+  // TeacherUnitsController — `teacher/units` (bo'limlar CRUD)
+  controllers: [TeacherUnitsController, TeacherLessonsController, BlocksController],
 })
 export class TeacherLessonsModule {}

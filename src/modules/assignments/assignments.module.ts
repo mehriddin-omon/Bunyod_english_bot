@@ -6,10 +6,12 @@ import { AssignmentsController } from './assignments.controller';
 import { Assignment, AssignmentSubmission } from 'src/common/core/entitys/assignment.entity';
 import { Group } from 'src/common/core/entitys/group.entity';
 import { Notification } from 'src/common/core/entitys/notification.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     GuardModule,
+    NotificationsModule,
     TypeOrmModule.forFeature([Assignment, AssignmentSubmission, Group, Notification]),
   ],
   providers: [AssignmentsService],

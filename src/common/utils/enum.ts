@@ -103,6 +103,16 @@ export enum XpSource {
    * Jarima (60% dan past) MANFIY amount bilan shu manbada yoziladi.
    */
   vocabulary_test = 'vocabulary_test',
+  /**
+   * Talaba izohi like yig'gani uchun (10 → +1, 100 → +1, 1000 → +1 …, cheklovsiz).
+   * `reference_id` = izoh idsi; `reference_key` = `vcomment:<id>:t<bosqich>`.
+   */
+  vocabulary_comment = 'vocabulary_comment',
+  /**
+   * Speaking ishi o'qituvchi tomonidan baholanganda: 3+ ball olgan har savol = 1 coin (bir marta).
+   * `reference_id` = dars idsi; `reference_key` = `speaking:<submissionId>:<savol raqami>`.
+   */
+  speaking = 'speaking',
   streak_bonus = 'streak_bonus',
   challenge_bonus = 'challenge_bonus',
   assignment_bonus = 'assignment_bonus',
@@ -173,6 +183,12 @@ export enum NotificationType {
   assignment = 'assignment',
   reminder = 'reminder',
   system = 'system',
+  /** 2026-11: teacher ommaviy xabari (notification_broadcasts) */
+  teacher_message = 'teacher_message',
+  /** 2026-11: onlayn (Zoom) dars — taklif, eslatma, o'zgarish */
+  online_lesson = 'online_lesson',
+  /** 2026-11: dars yozuvi tayyor */
+  recording_ready = 'recording_ready',
 }
 
 export enum ActivityType {

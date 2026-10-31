@@ -10,7 +10,7 @@ import { UserVocabularyProgress } from 'src/common/core/entitys/user-vocabulary-
 import { LessonProgressStatus, LessonStatus } from 'src/common/utils/enum';
 import { VocabStatus } from 'src/common/core/entitys/user-vocabulary-progress.entity';
 import { VocabularyRelation } from 'src/common/core/entitys/vocabulary-relation.entity';
-import { LessonGatingService } from 'src/common/services/lesson-gating.service';
+import { GUEST_LESSON_LIMIT_MESSAGE, LessonGatingService } from 'src/common/services/lesson-gating.service';
 
 @Injectable()
 export class HomeService {
@@ -252,12 +252,31 @@ export class HomeService {
     const nextLesson = allLessons[nextLessonIndex];
     const progress = completedCount > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
 
+    // Mehmon: birinchi 3 ta darsdan keyingisi — akkaunt saqlanmaguncha yopiq
+    const guestOpen = await this.lessonGatingService.getGuestOpenLessonIds(userId);
+    if (guestOpen && !guestOpen.has(nextLesson.id)) {
+      const unit = units.find((u) => u.id === nextLesson.unitId);
+      return {
+        status: 'locked' as const,
+        reason: 'guest' as const,
+        lockedLessonId: nextLesson.id,
+        lockedLessonTitle: nextLesson.lessonName,
+        groupId: null,
+        message: GUEST_LESSON_LIMIT_MESSAGE,
+        sectionNumber: unit?.number ?? null,
+        totalSections,
+        completedSections,
+        progress,
+      };
+    }
+
     const { ceilingIndex, groupId } = await this.lessonGatingService.computeEffectiveCeiling(userId);
 
     if (ceilingIndex !== null && nextLessonIndex > ceilingIndex) {
       const unit = units.find((u) => u.id === nextLesson.unitId);
       return {
         status: 'locked' as const,
+        reason: 'group' as const,
         lockedLessonId: nextLesson.id,
         lockedLessonTitle: nextLesson.lessonName,
         groupId,

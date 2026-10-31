@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { GuardModule } from '@my/common';
 import { LessonsService } from './lessons.service';
 import { LessonsController } from './lessons.controller';
+import { LessonGatingModule } from 'src/common/services/lesson-gating.module';
+import { LessonAccessGuard } from 'src/common/guard/lesson-access.guard';
 import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { Unit } from 'src/common/core/entitys/unit.entity';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
@@ -18,10 +20,13 @@ import { UserGamification, XpTransaction } from 'src/common/core/entitys/gamific
 import { Vocabulary } from 'src/common/core/entitys/vocabulary.entity';
 import { VocabularyRelation } from 'src/common/core/entitys/vocabulary-relation.entity';
 import { StudentAnswersService } from './student-answers.service';
+import { LessonScoreModule } from 'src/common/services/lesson-score.module';
 
 @Module({
   imports: [
     GuardModule,
+    LessonScoreModule,
+    LessonGatingModule,
     TypeOrmModule.forFeature([
       Lesson,
       Unit,
@@ -40,7 +45,7 @@ import { StudentAnswersService } from './student-answers.service';
       XpTransaction,
     ]),
   ],
-  providers: [LessonsService, StudentAnswersService],
+  providers: [LessonsService, StudentAnswersService, LessonAccessGuard],
   controllers: [LessonsController],
   exports: [LessonsService],
 })

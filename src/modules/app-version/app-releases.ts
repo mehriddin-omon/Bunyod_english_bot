@@ -23,7 +23,10 @@ export type ReleaseIcon =
   | 'coin'
   | 'account'
   | 'fix'
-  | 'star';
+  | 'star'
+  | 'notifications'
+  | 'video'
+  | 'chat';
 
 export interface ReleaseNote {
   icon: ReleaseIcon;
@@ -62,7 +65,27 @@ const NOTES_1_1: ReleaseNote[] = [
   },
 ];
 
+/** 1.2.0 — bildirishnomalar, onlayn (Zoom) darslar, guruh chati (2026-11) */
+const NOTES_1_2: ReleaseNote[] = [
+  {
+    icon: 'notifications',
+    title: "O'qituvchi xabarlari",
+    text: "O'qituvchingiz xabari telefoningizga push bo'lib keladi — bosib, kerakli darsga o'tasiz.",
+  },
+  {
+    icon: 'video',
+    title: 'Onlayn darslar',
+    text: "Zoom darsiga bitta tugma bilan qo'shiling, o'tkazib yuborgan darsingiz yozuvini ko'ring.",
+  },
+  {
+    icon: 'chat',
+    title: 'Guruh chati',
+    text: "Guruhdoshlaringiz va o'qituvchingiz bilan ilova ichida yozishing.",
+  },
+];
+
 export const ANDROID_RELEASES: AppRelease[] = [
+  { versionCode: 6, versionName: '1.2.0', notes: NOTES_1_2 },
   { versionCode: 5, versionName: '1.1.1', notes: NOTES_1_1 },
   { versionCode: 4, versionName: '1.1.0', notes: NOTES_1_1 },
 ];

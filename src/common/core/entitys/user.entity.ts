@@ -57,8 +57,19 @@ export class User extends BaseEntity {
   @Column({ type: 'boolean', name: 'is_guest', default: false })
   isGuest: boolean;
 
+  /** Guruh chati qoidalarini qabul qilgan vaqt (Google Play UGC talabi, 2026-11) */
+  @Column({ type: 'timestamptz', name: 'chat_rules_accepted_at', nullable: true })
+  chatRulesAcceptedAt: Date | null;
+
   @Column({ type: 'text', name: 'refresh_token', nullable: true })
   refreshToken: string | null;
+
+  /**
+   * Oxirgi marta onlayn bo'lgan vaqt — har avtorizatsiyali so'rovda (daqiqasiga ko'pi bilan 1 marta)
+   * va chat socket ulanganda/uzilganda yoziladi. Qarang: `common/services/last-seen.ts`.
+   */
+  @Column({ type: 'timestamptz', name: 'last_seen_at', nullable: true })
+  lastSeenAt: Date | null;
 
   @OneToOne(() => StudentProfile, (p) => p.user)
   studentProfile: StudentProfile;

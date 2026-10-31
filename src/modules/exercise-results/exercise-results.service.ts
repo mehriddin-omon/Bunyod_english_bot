@@ -5,6 +5,7 @@ import { ExerciseResult } from 'src/common/core/entitys/exercise-result.entity';
 import { SubmitExerciseResultsDto } from './dto/exercise-results.dto';
 import { XpService } from '../gamification/xp.service';
 import { XpSource } from 'src/common/utils/enum';
+import { LessonScoreService } from 'src/common/services/lesson-score.service';
 
 @Injectable()
 export class ExerciseResultsService {
@@ -13,6 +14,8 @@ export class ExerciseResultsService {
     private readonly resultRepo: Repository<ExerciseResult>,
 
     private readonly xpService: XpService,
+
+    private readonly lessonScore: LessonScoreService,
   ) {}
 
   /**
@@ -20,7 +23,8 @@ export class ExerciseResultsService {
    * (userId, clientAttemptId) bo'yicha ON CONFLICT DO NOTHING — bir xil
    * urinish ikki marta yuborilsa dublikat yozilmaydi.
    *
-   * Saqlangandan keyin coin beriladi (pastdagi izohga qarang).
+   * Saqlangandan keyin coin beriladi (pastdagi izohga qarang) va dars balli
+   * qayta hisoblanadi — dars yakunlangandan keyingi urinishlar ham ballga tushadi.
    */
   async submitBatch(userId: string, dto: SubmitExerciseResultsDto) {
     if (!dto.results.length) return { saved: 0, skipped: 0, coinsEarned: 0 };
@@ -34,6 +38,10 @@ export class ExerciseResultsService {
       correctCount: r.correctCount ?? null,
       totalCount: r.totalCount ?? null,
       sectionTotal: r.sectionTotal ?? null,
+      title: r.title?.trim() || null,
+      items: r.items?.length
+        ? r.items.map((it) => ({ q: it.q, given: it.given ?? null, expected: it.expected, ok: it.ok }))
+        : null,
       answeredAt: new Date(r.answeredAt),
       clientAttemptId: r.clientAttemptId,
     }));
@@ -53,6 +61,12 @@ export class ExerciseResultsService {
       userId,
       Array.from(new Set(dto.results.map((r) => r.exerciseKey))),
     );
+
+    if (saved > 0) {
+      for (const lessonId of new Set(dto.results.map((r) => r.lessonId))) {
+        await this.lessonScore.refresh(userId, lessonId);
+      }
+    }
 
     return { saved, skipped: rows.length - saved, coinsEarned };
   }

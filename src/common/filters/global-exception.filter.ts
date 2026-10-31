@@ -20,6 +20,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Ichki server xatosi';
+    /** Mashina o'qiydigan sabab (masalan GUEST_LESSON_LIMIT) — ilova shunga qarab ekran tanlaydi */
+    let code: string | undefined;
 
     if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
@@ -28,6 +30,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         typeof res === 'string'
           ? res
           : (res as any).message ?? exception.message;
+      if (typeof res === 'object' && typeof (res as any).code === 'string') code = (res as any).code;
     } else if (exception instanceof QueryFailedError) {
       const pg = exception as any;
       if (pg.code === '23505') {
@@ -52,6 +55,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     response.status(statusCode).json({
       statusCode,
       message,
+      ...(code ? { code } : {}),
       data: null,
     });
   }

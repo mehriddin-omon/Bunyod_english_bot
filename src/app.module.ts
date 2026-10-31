@@ -23,6 +23,10 @@ import { HomeModule } from './modules/home/home.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { ExerciseResultsModule } from './modules/exercise-results/exercise-results.module';
 import { AppVersionModule } from './modules/app-version/app-version.module';
+import { BroadcastsModule } from './modules/broadcasts/broadcasts.module';
+import { OnlineLessonsModule } from './modules/online-lessons/online-lessons.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { SpeakingModule } from './modules/speaking/speaking.module';
 
 @Module({
   imports: [
@@ -76,6 +80,10 @@ import { AppVersionModule } from './modules/app-version/app-version.module';
     UploadModule,
     ExerciseResultsModule,
     AppVersionModule,
+    BroadcastsModule,
+    OnlineLessonsModule,
+    ChatModule,
+    SpeakingModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: ResponseTransformInterceptor },

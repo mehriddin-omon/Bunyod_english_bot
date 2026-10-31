@@ -1,5 +1,5 @@
 import {
-  IsString, IsOptional, IsEnum, IsUUID, IsArray, ValidateNested,
+  IsString, IsOptional, IsEnum, IsUUID, IsArray, ValidateNested, ArrayMinSize, ArrayMaxSize, MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PartOfSpeech } from 'src/common/utils/enum';
@@ -68,4 +68,29 @@ export class UpsertExamplesDto {
   @ValidateNested({ each: true })
   @Type(() => ExampleItemDto)
   examples: ExampleItemDto[];
+}
+
+class ReplaceVocabularyWordDto {
+  @IsString()
+  @MaxLength(200)
+  word: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  ipa?: string;
+
+  @IsString()
+  @MaxLength(300)
+  translation: string;
+}
+
+/** Darsning lug'atini yangi to'plam bilan almashtirish (eski so'zlar o'chmaydi) */
+export class ReplaceLessonVocabularyDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => ReplaceVocabularyWordDto)
+  words: ReplaceVocabularyWordDto[];
 }

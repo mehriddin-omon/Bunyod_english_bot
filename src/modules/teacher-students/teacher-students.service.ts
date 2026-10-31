@@ -68,6 +68,11 @@ function relativeLabel(date: Date | null): string {
 /** Ro'yxat filtrlari — endi mijozda emas, bazada qo'llanadi (sahifalash uchun) */
 export type RosterAccessFilter = 'all' | 'active' | 'blocked';
 export type RosterAddedFilter = 'all' | 'today' | '7d' | '30d';
+/** Mehmon akkauntlar: barchasi (standart) · faqat mehmonlar · mehmonsiz */
+export type RosterGuestFilter = 'all' | 'only' | 'exclude';
+
+export type RosterSortKey = 'name' | 'phone' | 'address' | 'level' | 'added' | 'status';
+export type RosterSortOrder = 'asc' | 'desc';
 
 export interface RosterQuery {
   search?: string;
@@ -75,7 +80,24 @@ export interface RosterQuery {
   limit?: number;
   access?: RosterAccessFilter;
   added?: RosterAddedFilter;
+  guests?: RosterGuestFilter;
+  sort?: RosterSortKey;
+  order?: RosterSortOrder;
 }
+
+/**
+ * Jadval ustuni → saralash ustunlari (entity PROPERTY nomlari — take/skip bilan
+ * ustun nomi xato beradi, CLAUDE.md). CEFR qiymatlari (A1…C2) alifbo bo'yicha
+ * ham to'g'ri tartibda. Holat: asc → bloklanganlar birinchi.
+ */
+const ROSTER_SORT_COLUMNS: Record<RosterSortKey, string[]> = {
+  name: ['u.firstName', 'u.lastName'],
+  phone: ['u.phoneNumber'],
+  address: ['sp.address'],
+  level: ['sp.cefrLevel'],
+  added: ['u.createdAt'],
+  status: ['u.isActive'],
+};
 
 /** Bir sahifadagi standart o'quvchilar soni */
 const DEFAULT_ROSTER_LIMIT = 25;
@@ -158,16 +180,19 @@ export class TeacherStudentsService {
   // o'quv ko'rsatkichlari Nazorat bo'limida.
   // ────────────────────────────────────────────────────────────────────────
   async getSummary(userId: string, role: Role) {
-    const [groups, total, blocked, newThisWeek] = await Promise.all([
+    const [groups, total, blocked, newThisWeek, guests] = await Promise.all([
       this.loadTeacherGroups(userId, role),
       this.userRepo.count({ where: { role: Role.student } }),
       this.userRepo.count({ where: { role: Role.student, isActive: false } }),
       this.countNewStudents(daysAgo(7)),
+      this.userRepo.count({ where: { role: Role.student, isGuest: true } }),
     ]);
 
     return {
       groupCount: groups.length,
       totalStudents: total,
+      // totalStudents ichida — ilovada "Boshlash" bilan akkaunt ochmagan mehmonlar
+      guestStudents: guests,
       activeStudents: total - blocked,
       blockedStudents: blocked,
       newStudentsThisWeek: newThisWeek,
@@ -188,6 +213,7 @@ export class TeacherStudentsService {
     const limit = Math.min(100, Math.max(5, Number(query.limit) || DEFAULT_ROSTER_LIMIT));
     const access = query.access ?? 'all';
     const added = query.added ?? 'all';
+    const guests = query.guests ?? 'all';
     const search = query.search?.trim();
 
     const usersQb = this.userRepo
@@ -198,7 +224,9 @@ export class TeacherStudentsService {
 
     if (search) {
       usersQb.andWhere(
-        '(u.username ILIKE :s OR u.first_name ILIKE :s OR u.last_name ILIKE :s OR u.phone_number ILIKE :s)',
+        // Mehmonning ismi yo'q — uni kodi (id oxirgi 6 belgisi) bilan ham topish mumkin
+        `(u.username ILIKE :s OR u.first_name ILIKE :s OR u.last_name ILIKE :s OR u.phone_number ILIKE :s
+          OR (u.is_guest = true AND RIGHT(u.id::text, 6) ILIKE :s))`,
         { s: `%${search}%` },
       );
     }
@@ -207,15 +235,31 @@ export class TeacherStudentsService {
     if (access === 'active') usersQb.andWhere('u.is_active = true');
     if (access === 'blocked') usersQb.andWhere('u.is_active = false');
 
+    // Mehmonlar filtri
+    if (guests === 'only') usersQb.andWhere('u.is_guest = true');
+    if (guests === 'exclude') usersQb.andWhere('u.is_guest = false');
+
     // Qo'shilgan sana filtri
     const since = rosterAddedSince(added);
     if (since) usersQb.andWhere('u.created_at >= :since', { since });
 
+    // Saralash: tanlangan ustun, keyin ism va id — sahifalar orasida tartib barqaror
+    // bo'lishi uchun. Bo'sh qiymatlar (telefon, manzil, daraja) doim oxirida.
     // DIQQAT: take/skip bilan orderBy'da entity property nomi bo'lishi shart
     // (ustun nomi berilsa TypeORM "databaseName" xatosini beradi) — CLAUDE.md.
+    // TypeORM orderBy'ni kalit bo'yicha saqlaydi — bir ustun ikki marta qo'shilmaydi.
+    const sortKey: RosterSortKey = query.sort && query.sort in ROSTER_SORT_COLUMNS ? query.sort : 'name';
+    const direction = query.order === 'desc' ? 'DESC' : 'ASC';
+    const primary = ROSTER_SORT_COLUMNS[sortKey];
+    const tiebreak = ['u.firstName', 'u.lastName', 'u.id'].filter((c) => !primary.includes(c));
+    primary.forEach((col, i) =>
+      i === 0
+        ? usersQb.orderBy(col, direction, 'NULLS LAST')
+        : usersQb.addOrderBy(col, direction, 'NULLS LAST'),
+    );
+    tiebreak.forEach((col) => usersQb.addOrderBy(col, 'ASC'));
+
     const [users, total] = await usersQb
-      .orderBy('u.firstName', 'ASC')
-      .addOrderBy('u.lastName', 'ASC')
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
@@ -242,6 +286,9 @@ export class TeacherStudentsService {
       lastName: u.lastName ?? '',
       username: u.username,
       avatarUrl: u.avatarUrl,
+      isGuest: !!u.isGuest,
+      // Mehmonni ro'yxatda ajratish uchun qisqa kod (Audience'dagi bilan bir xil)
+      guestCode: u.isGuest ? String(u.id).slice(-6) : null,
       phone: u.phoneNumber,
       email: u.email,
       address: u.studentProfile?.address ?? null,
@@ -357,6 +404,8 @@ export class TeacherStudentsService {
   // ────────────────────────────────────────────────────────────────────────
   async resetPassword(id: string, dto: ResetStudentPasswordDto) {
     const user = await this.findStudent(id);
+    // Mehmon parol bilan kira olmaydi — avval akkauntni saqlashi kerak
+    if (user.isGuest) throw new BadRequestException("Mehmon akkauntga parol qo'yib bo'lmaydi");
     user.password = await bcrypt.hash(dto.password, 10);
     // Eski sessiyalar yangi parol bilan almashtirilishi uchun bekor qilinadi
     user.refreshToken = null;

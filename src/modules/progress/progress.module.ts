@@ -11,10 +11,12 @@ import { DailyTracking } from 'src/common/core/entitys/daily-tracking.entity';
 import { UserVocabularyProgress } from 'src/common/core/entitys/user-vocabulary-progress.entity';
 import { LessonGatingModule } from 'src/common/services/lesson-gating.module';
 import { GamificationModule } from '../gamification/gamification.module';
+import { LessonScoreModule } from 'src/common/services/lesson-score.module';
 
 @Module({
   imports: [
     GuardModule,
+    LessonScoreModule,
     LessonGatingModule,
     // GamificationModule — dars XP si uchun (XpService)
     GamificationModule,

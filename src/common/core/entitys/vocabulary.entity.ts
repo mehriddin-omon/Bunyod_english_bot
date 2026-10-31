@@ -33,6 +33,10 @@ export class Vocabulary extends BaseEntity {
   @Column({ type: 'bigint', name: 'order_index', default: 0 })
   orderIndex: number;
 
+  /** Lug'at to'plami (1 dan): dars lug'ati almashtirilsa eski so'zlar eski to'plamda qoladi */
+  @Column({ type: 'int', name: 'set_no', default: 1 })
+  setNo: number;
+
   @ManyToMany(() => Vocabulary)
   @JoinTable({
     name: 'vocabulary_synonyms',

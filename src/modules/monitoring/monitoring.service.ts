@@ -9,6 +9,9 @@ import { Assignment, AssignmentSubmission } from 'src/common/core/entitys/assign
 import { UserGamification, UserSkill } from 'src/common/core/entitys/gamification.entity';
 import { ActivityLog, DailyTracking } from 'src/common/core/entitys/daily-tracking.entity';
 import { LessonProgressStatus, Role, SubmissionStatus } from 'src/common/utils/enum';
+import { computeLessonScore, grammarSectionScore, staticSectionScore, vocabularyPercent, ExerciseBest } from 'src/common/utils/lesson-score';
+import { LessonScoreService } from 'src/common/services/lesson-score.service';
+import { isUserOnline, latestOf } from 'src/common/services/last-seen';
 
 @Injectable()
 export class MonitoringService {
@@ -46,6 +49,8 @@ export class MonitoringService {
     // Yig'ma so'rovlar xom SQL bilan — group-panels.service.ts uslubida
     @InjectDataSource()
     private readonly ds: DataSource,
+
+    private readonly lessonScore: LessonScoreService,
   ) {}
 
   /** Soniyani "Xs Ym" ko'rinishida formatlaydi (0 bo'lsa "0m"). */
@@ -95,10 +100,14 @@ export class MonitoringService {
 
         // Oxirgi faollik = dars progressi eng so'nggi yangilangan vaqti (aniq
         // timestamp), gamification sanasi (kun aniqligida) esa zaxira.
-        const lastActivityAt = this.resolveLastActivity(
-          progressRows,
-          gamification?.lastActivityDate ?? null,
-        );
+        // + ilovada oxirgi onlayn bo'lgan vaqt (users.last_seen_at) — eng so'nggisi olinadi
+        const online = isUserOnline(userId);
+        const lastActivityAt = online
+          ? new Date()
+          : latestOf(
+              member.lastSeenAt,
+              this.resolveLastActivity(progressRows, gamification?.lastActivityDate ?? null),
+            );
         const daysSinceActive = lastActivityAt
           ? Math.floor((Date.now() - lastActivityAt.getTime()) / 86400000)
           : 999;
@@ -124,6 +133,7 @@ export class MonitoringService {
           usageLabel: this.fmtDuration(usageMinutes),
           mastery,
           lastActiveAt: lastActivityAt ? lastActivityAt.toISOString() : null,
+          online,
           status,
           daysSinceActive,
           lateAssignments,
@@ -341,7 +351,7 @@ export class MonitoringService {
   ): Promise<any> {
     const [profile] = await this.ds.query(
       `SELECT u.id, u.first_name, u.last_name, u.username, u.email, u.avatar_url,
-              u.created_at, u.is_active,
+              u.created_at, u.is_active, u.last_seen_at,
               sp.cefr_level,
               ug.streak_current, ug.streak_max, ug.xp_total, ug.xp_weekly,
               ug.league, ug.last_activity_date
@@ -392,6 +402,8 @@ export class MonitoringService {
       topicRows,
       assignmentRows,
       [groupAgg],
+      grammarBestRows,
+      vocabLessonRows,
     ] = await Promise.all([
       // 1. Dars progressi + ko'nikma ballari
       this.ds.query(
@@ -399,11 +411,12 @@ export class MonitoringService {
                 count(*) FILTER (WHERE lp.status = 'completed')::int AS completed,
                 avg(lp.score) AS avg_score,
                 COALESCE(sum(lp.time_spent_sec), 0)::bigint AS total_sec,
-                avg(lp.grammar_score) AS grammar,
                 avg(lp.reading_score) AS reading,
                 avg(lp.listening_score) AS listening,
                 avg(lp.speaking_score) AS speaking,
-                avg(lp.vocabulary_score) AS vocabulary,
+                count(lp.reading_score)::int AS reading_n,
+                count(lp.listening_score)::int AS listening_n,
+                count(lp.speaking_score)::int AS speaking_n,
                 max(lp.updated_at) AS last_progress_at
            FROM lesson_progress lp
           WHERE lp.user_id = $1`,
@@ -494,10 +507,11 @@ export class MonitoringService {
 
       // 9. Mavzular bo'yicha statistika
       this.ds.query(
-        `SELECT l.order_index, l.lesson_name, l.cefr_level,
+        `SELECT l.id AS lesson_id, l.order_index, l.lesson_name, l.cefr_level,
                 u.number AS unit_number, u.title AS unit_title,
-                lp.status, lp.score, lp.time_spent_sec::int AS time_spent_sec,
-                lp.attempts::int AS attempts, lp.completed_at
+                lp.id AS progress_id, lp.status, lp.score, lp.time_spent_sec::int AS time_spent_sec,
+                lp.attempts::int AS attempts, lp.completed_at,
+                lp.grammar_score, lp.reading_score, lp.listening_score, lp.quiz_score, lp.speaking_score
            FROM lesson_progress lp
            JOIN lessons l ON l.id = lp.lesson_id
            LEFT JOIN units u ON u.id = l.unit_id
@@ -537,33 +551,133 @@ export class MonitoringService {
             [groupId, studentId],
           )
         : Promise.resolve([undefined]),
+
+      // 12. Grammatika: statik mashqlarning eng yaxshi foizi (dars × mashq) + bazadagi grammatika bloki
+      this.ds.query(
+        `SELECT lesson_id::text, exercise_key, MAX(percent)::float AS best, NULL::int AS block_score,
+                NULL::int AS listening_block, NULL::int AS reading_block
+           FROM exercise_results
+          WHERE user_id = $1
+          GROUP BY lesson_id, exercise_key
+         UNION ALL
+         SELECT lesson_id::text, NULL, NULL, grammar_score, listening_score, reading_score
+           FROM lesson_progress
+          WHERE user_id = $1
+            AND (grammar_score IS NOT NULL OR listening_score IS NOT NULL OR reading_score IS NOT NULL)`,
+        [studentId],
+      ),
+
+      // 13. Lug'at: lug'ati ishlangan har dars — jami so'z va mustahkam so'z
+      this.ds.query(
+        `WITH words AS (
+           SELECT src.lesson_id, r.id AS pair_id
+             FROM vocabulary_relations r
+             JOIN vocabularys src ON src.id = r.vocabulary_id AND src.lang = 'en'
+            WHERE src.lesson_id IS NOT NULL AND vocab_visible($1, src.lesson_id, src.set_no)
+         ), touched AS (
+           SELECT lesson_id FROM vocabulary_stage_progress WHERE user_id = $1
+           UNION
+           SELECT lesson_id FROM vocabulary_coin_tests WHERE user_id = $1
+           UNION
+           SELECT w.lesson_id
+             FROM user_vocabulary_progress uvp
+             JOIN words w ON w.pair_id = uvp.pair_id
+            WHERE uvp.user_id = $1 AND (uvp.attempts > 0 OR uvp.status <> 'new')
+         )
+         SELECT w.lesson_id,
+                count(*)::int AS total,
+                count(uvp.id) FILTER (WHERE uvp.status = 'mastered')::int AS mastered
+           FROM words w
+           JOIN touched t ON t.lesson_id = w.lesson_id
+      LEFT JOIN user_vocabulary_progress uvp ON uvp.pair_id = w.pair_id AND uvp.user_id = $1
+          GROUP BY w.lesson_id`,
+        [studentId],
+      ),
     ]);
 
     // ── Ko'nikmalar ───────────────────────────────────────────────────────────
-    const vocabTotal = vocabAgg?.mastered ?? 0;
+    // Har bo'lim — barcha darslar bo'yicha o'rtacha bajarish foizi (shu bo'lim ishlangan darslar).
+    // Dars ichidagi bo'lim foizi bilan bir xil formula (StudentLessonSheet kartalari, utils/lesson-score.ts).
+    const grammarByLesson = new Map<
+      string,
+      { bests: ExerciseBest[]; block: number | null; listeningBlock: number | null; readingBlock: number | null }
+    >();
+    for (const r of grammarBestRows as any[]) {
+      const g = grammarByLesson.get(r.lesson_id) ?? { bests: [], block: null, listeningBlock: null, readingBlock: null };
+      if (r.exercise_key) g.bests.push({ exerciseKey: r.exercise_key, best: Number(r.best) });
+      else {
+        g.block = r.block_score == null ? null : Number(r.block_score);
+        g.listeningBlock = r.listening_block == null ? null : Number(r.listening_block);
+        g.readingBlock = r.reading_block == null ? null : Number(r.reading_block);
+      }
+      grammarByLesson.set(r.lesson_id, g);
+    }
+    const grammarPcts = [...grammarByLesson.values()]
+      .map((g) => grammarSectionScore({ exerciseBests: g.bests, grammarScore: g.block }))
+      .filter((v): v is number => v != null);
+
+    // Listening: ilova ichidagi mashq natijasi (`lessonN:listening:*`), bo'lmasa eski lesson_progress balli —
+    // dars ichidagi karta (sectionScores) bilan bir xil
+    const listeningPcts = [...grammarByLesson.values()]
+      .map((g) => staticSectionScore({ exerciseBests: g.bests }, 'listening') ?? g.listeningBlock)
+      .filter((v): v is number => v != null);
+    // Reading — xuddi shunday: ilova ichidagi (`lessonN:reading:*`), bo'lmasa eski lesson_progress balli
+    const readingPcts = [...grammarByLesson.values()]
+      .map((g) => staticSectionScore({ exerciseBests: g.bests }, 'reading') ?? g.readingBlock)
+      .filter((v): v is number => v != null);
+
+    // `vocabLessonRows` — faqat lug'ati ishlangan darslar
+    const vocabPcts = (vocabLessonRows as any[])
+      .map((r) => vocabularyPercent(r.mastered, r.total, true))
+      .filter((v): v is number => v != null);
+    const vocabPctByLesson = new Map<string, number | null>(
+      (vocabLessonRows as any[]).map((r) => [r.lesson_id, vocabularyPercent(r.mastered, r.total, true)]),
+    );
+    const vocabWords = (vocabLessonRows as any[]).reduce((n, r) => n + r.total, 0);
+    const vocabMastered = (vocabLessonRows as any[]).reduce((n, r) => n + r.mastered, 0);
+
+    const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
+    const lessonsNote = (n: number) => (n ? `${n} ta dars` : null);
+
     const skills = [
-      { key: 'grammar', label: 'Grammar', pct: this.roundOrNull(progressAgg?.grammar) },
-      { key: 'reading', label: 'Reading', pct: this.roundOrNull(progressAgg?.reading) },
-      { key: 'listening', label: 'Listening', pct: this.roundOrNull(progressAgg?.listening) },
-      { key: 'speaking', label: 'Speaking', pct: this.roundOrNull(progressAgg?.speaking) },
+      { key: 'grammar', label: 'Grammar', pct: avg(grammarPcts), note: lessonsNote(grammarPcts.length) },
+      { key: 'reading', label: 'Reading', pct: avg(readingPcts), note: lessonsNote(readingPcts.length) },
+      { key: 'listening', label: 'Listening', pct: avg(listeningPcts), note: lessonsNote(listeningPcts.length) },
+      { key: 'speaking', label: 'Speaking', pct: this.roundOrNull(progressAgg?.speaking), note: lessonsNote(progressAgg?.speaking_n ?? 0) },
       {
         key: 'writing',
         label: 'Writing',
         pct: writingAgg?.graded ? this.roundOrNull(writingAgg.pct) : null,
-        note: writingAgg?.graded ? null : 'baholangan ish yo\'q',
+        note: writingAgg?.graded ? `${writingAgg.graded} ta ish` : 'baholangan ish yo\'q',
       },
       {
         key: 'vocabulary',
-        label: "Lug'at boyligi",
-        pct: this.roundOrNull(progressAgg?.vocabulary),
-        note: vocabTotal ? `${vocabTotal} so'z` : null,
+        label: "Lug'at",
+        // Mustahkam so'zlar ulushi (har dars bo'yicha, keyin o'rtacha) — «mustahkam» coinli sinovda beriladi
+        pct: avg(vocabPcts),
+        note: vocabWords ? `${vocabMastered}/${vocabWords} so'z mustahkam` : null,
       },
-    ].map((s) => ({
-      ...s,
-      note: (s as any).note ?? null,
-      // CEFR yorlig'i foizdan chiqariladi — `user_skills` jadvaliga runtime'da hech kim yozmaydi
-      level: this.cefrFromPct(s.pct),
+    ];
+
+    // ── Mavzular: ball formula bo'yicha (utils/lesson-score.ts) ───────────────
+    // Bazadagi ball eskirgan bo'lsa (masalan ilova yuborgan eski qiymat) — shu yerda tuzatiladi
+    const topicScored = (topicRows as any[]).map((r) => ({
+      ...r,
+      liveScore: computeLessonScore({
+        exerciseBests: grammarByLesson.get(r.lesson_id)?.bests ?? [],
+        grammarScore: r.grammar_score,
+        readingScore: r.reading_score,
+        listeningScore: r.listening_score,
+        quizScore: r.quiz_score,
+        speakingScore: r.speaking_score,
+        vocabularyPercent: vocabPctByLesson.get(r.lesson_id) ?? null,
+      }),
     }));
+    void this.lessonScore.saveScores(
+      topicScored
+        .filter((r) => r.liveScore != null && r.liveScore !== r.score)
+        .map((r) => ({ id: r.progress_id, score: r.liveScore as number })),
+    );
 
     // ── Heatmap ───────────────────────────────────────────────────────────────
     const maxBucket = heatmapRows.reduce((m: number, r: any) => Math.max(m, r.count), 0);
@@ -593,9 +707,11 @@ export class MonitoringService {
       : null;
 
     // ── Holat ─────────────────────────────────────────────────────────────────
-    const lastActiveAt: Date | null =
-      progressAgg?.last_progress_at ??
-      (profile.last_activity_date ? new Date(profile.last_activity_date) : null);
+    // Ilovada oxirgi onlayn bo'lgan vaqt (users.last_seen_at) + eski manbalar — eng so'nggisi
+    const online = isUserOnline(profile.id);
+    const lastActiveAt: Date | null = online
+      ? new Date()
+      : latestOf(profile.last_seen_at, progressAgg?.last_progress_at, profile.last_activity_date);
     const daysSinceActive = lastActiveAt
       ? Math.floor((Date.now() - new Date(lastActiveAt).getTime()) / 86400000)
       : null;
@@ -622,6 +738,7 @@ export class MonitoringService {
         isActive: profile.is_active,
         joinedAt: profile.created_at,
         lastActiveAt,
+        online,
         daysSinceActive,
         status,
         group: group ? { id: group.id, name: group.name } : null,
@@ -655,7 +772,7 @@ export class MonitoringService {
       },
       skills,
       vocabulary: {
-        total: vocabTotal,
+        total: vocabAgg?.mastered ?? 0,
         learning: vocabAgg?.learning ?? 0,
         weeklyGain: vocabAgg?.weekly_gain ?? 0,
         retention: this.pct(vocabAgg?.mastered, (vocabAgg?.mastered ?? 0) + (vocabAgg?.learning ?? 0)),
@@ -663,7 +780,8 @@ export class MonitoringService {
       },
       activity: { heatmap, peakLabel },
       weeklyActivity,
-      topicStats: topicRows.map((r: any) => ({
+      topicStats: topicScored.map((r: any) => ({
+        lessonId: r.lesson_id,
         lessonCode:
           r.unit_number != null ? `${r.unit_number}.${r.order_index}` : `${r.order_index}`,
         unitTitle: r.unit_title ?? null,
@@ -672,7 +790,7 @@ export class MonitoringService {
         status: r.status,
         // Alohida "bajarildi %" ustuni yo'q — status dan chiqariladi
         completion: r.status === 'completed' ? 100 : r.status === 'in_progress' ? 50 : 0,
-        score: r.score,
+        score: r.liveScore ?? r.score,
         timeSpentSec: r.time_spent_sec,
         timeLabel: r.time_spent_sec ? this.fmtDuration(Math.round(r.time_spent_sec / 60)) : null,
         attempts: r.attempts,
@@ -710,17 +828,6 @@ export class MonitoringService {
     if (v == null) return null;
     const n = Number(v);
     return Number.isFinite(n) ? Math.round(n) : null;
-  }
-
-  /** Foizdan CEFR yorlig'i (`user_skills` jadvaliga runtime'da yozilmagani uchun) */
-  private cefrFromPct(pct: number | null): string | null {
-    if (pct == null) return null;
-    if (pct < 40) return 'A1';
-    if (pct < 55) return 'A2';
-    if (pct < 70) return 'B1';
-    if (pct < 85) return 'B2';
-    if (pct < 95) return 'C1';
-    return 'C2';
   }
 
   /** Eng faol 2 soatlik oraliq, masalan "16:00–18:00" */

@@ -3,7 +3,13 @@ import { LessonsService } from './lessons.service';
 import { StudentAnswersService, SubmittedAnswer } from './student-answers.service';
 import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guard/roles.guard';
+import { LessonAccessGuard } from 'src/common/guard/lesson-access.guard';
 
+/**
+ * `@UseGuards(LessonAccessGuard)` — dars kontenti va javob yuborish: mehmonga faqat
+ * birinchi 3 ta dars (lesson-gating.service.ts). `GET /lessons` va `GET /lessons/:id`
+ * ochiq qoladi — ular `guest_locked` / `guestLocked` belgisini qaytaradi.
+ */
 @Controller('lessons')
 @UseGuards(GuardService, RolesGuard)
 export class LessonsController {
@@ -43,6 +49,7 @@ export class LessonsController {
 
   /** GET /lessons/units/:unitId/lessons/:lessonId/reading */
   @Get('units/:unitId/lessons/:lessonId/reading')
+  @UseGuards(LessonAccessGuard)
   async getReading(
     @Param('lessonId') lessonId: string,
     @Req() req: any,
@@ -52,6 +59,7 @@ export class LessonsController {
 
   /** GET /lessons/units/:unitId/lessons/:lessonId/listening */
   @Get('units/:unitId/lessons/:lessonId/listening')
+  @UseGuards(LessonAccessGuard)
   async getListening(
     @Param('lessonId') lessonId: string,
     @Req() req: any,
@@ -61,18 +69,21 @@ export class LessonsController {
 
   /** GET /lessons/:lessonId/pages */
   @Get(':lessonId/pages')
+  @UseGuards(LessonAccessGuard)
   async getLessonPages(@Param('lessonId') lessonId: string) {
     return this.lessonsService.getLessonPages(lessonId);
   }
 
   /** GET /lessons/:lessonId/content */
   @Get(':lessonId/content')
+  @UseGuards(LessonAccessGuard)
   async getLessonContent(@Param('lessonId') lessonId: string) {
     return this.lessonsService.getLessonContent(lessonId);
   }
 
   /** GET /lessons/:lessonId/blocks */
   @Get(':lessonId/blocks')
+  @UseGuards(LessonAccessGuard)
   async getLessonBlocks(@Param('lessonId') lessonId: string) {
     return this.lessonsService.getLessonBlocks(lessonId);
   }
@@ -82,6 +93,7 @@ export class LessonsController {
    * (quiz | reading | listening | grammar — server blok turini o'zi aniqlaydi)
    */
   @Post(':lessonId/blocks/:blockId/submit')
+  @UseGuards(LessonAccessGuard)
   async submitBlock(
     @Param('lessonId') lessonId: string,
     @Param('blockId') blockId: string,
@@ -98,6 +110,7 @@ export class LessonsController {
 
   /** POST /lessons/:lessonId/quiz/:quizId/submit — quiz javoblarini topshirish (eski, saqlanadi) */
   @Post(':lessonId/quiz/:quizId/submit')
+  @UseGuards(LessonAccessGuard)
   async submitQuiz(
     @Param('lessonId') lessonId: string,
     @Param('quizId') quizId: string,
@@ -114,6 +127,7 @@ export class LessonsController {
 
   /** POST /lessons/:lessonId/reading/:blockId/submit — reading javoblari */
   @Post(':lessonId/reading/:blockId/submit')
+  @UseGuards(LessonAccessGuard)
   async submitReading(
     @Param('lessonId') lessonId: string,
     @Param('blockId') blockId: string,
@@ -130,6 +144,7 @@ export class LessonsController {
 
   /** POST /lessons/:lessonId/listening/:blockId/submit — listening javoblari */
   @Post(':lessonId/listening/:blockId/submit')
+  @UseGuards(LessonAccessGuard)
   async submitListening(
     @Param('lessonId') lessonId: string,
     @Param('blockId') blockId: string,

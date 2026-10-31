@@ -92,10 +92,11 @@ export class GroupController {
     return this.groupService.updateGroup(id, dto, req.user.sub, req.user.role);
   }
 
+  /** Teacher faqat O'Z guruhini o'chiradi (servisda tekshiriladi), admin — istalganini */
   @Delete(':id')
-  @Roles(Role.admin)
-  async deleteGroup(@Param('id') id: string) {
-    await this.groupService.deleteGroup(id);
+  @Roles(Role.admin, Role.teacher)
+  async deleteGroup(@Param('id') id: string, @Request() req) {
+    await this.groupService.deleteGroup(id, req.user.sub, req.user.role);
     return { message: "Guruh o'chirildi" };
   }
 

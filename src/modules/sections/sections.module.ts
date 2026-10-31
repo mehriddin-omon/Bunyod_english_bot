@@ -6,10 +6,12 @@ import { SectionsController } from './sections.controller';
 import { Unit } from 'src/common/core/entitys/unit.entity';
 import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
+import { LessonGatingModule } from 'src/common/services/lesson-gating.module';
 
 @Module({
   imports: [
     GuardModule,
+    LessonGatingModule,
     TypeOrmModule.forFeature([Unit, Lesson, LessonProgress]),
   ],
   providers: [SectionsService],

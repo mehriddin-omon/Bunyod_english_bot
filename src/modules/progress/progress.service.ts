@@ -12,6 +12,7 @@ import { VocabStatus } from 'src/common/core/entitys/user-vocabulary-progress.en
 import { CompleteLessonDto, UpsertProgressDto } from './dto/progress.dto';
 import { LessonGatingService } from 'src/common/services/lesson-gating.service';
 import { XpService } from '../gamification/xp.service';
+import { LessonScoreService } from 'src/common/services/lesson-score.service';
 
 @Injectable()
 export class ProgressService {
@@ -39,6 +40,8 @@ export class ProgressService {
     // Coin/XP faqat shu servis orqali beriladi — daftar bilan yig'ma
     // ko'rsatkichlar hech qachon bir-biridan ajralib qolmaydi
     private readonly xpService: XpService,
+
+    private readonly lessonScore: LessonScoreService,
   ) {}
 
   /**
@@ -47,19 +50,15 @@ export class ProgressService {
    * bu haqiqiy server-side to'siq (client so'rovni to'g'ridan-to'g'ri chaqirsa ham).
    */
   private async assertLessonAccessible(userId: string, lessonId: string): Promise<void> {
+    // Mehmon — faqat birinchi 3 ta dars
+    await this.lessonGatingService.assertGuestLessonAccess(userId, lessonId);
+
+    // Ketma-ketlik: oldingi dars tugatilmagan bo'lsa 403 + code LESSON_LOCKED
+    await this.lessonGatingService.assertSequentialAccess(userId, lessonId);
+
     const order = await this.lessonGatingService.getPublishedLessonOrder();
     const lessonIndex = order.findIndex((l) => l.id === lessonId);
     if (lessonIndex === -1) return; // nashr etilmagan/topilmagan dars — mavjud NotFoundException logikasi bunga ta'sir qilmaydi
-
-    const completedRecords = await this.progressRepo.find({
-      where: { userId, status: LessonProgressStatus.completed },
-    });
-    const completedSet = new Set(completedRecords.map((p) => p.lessonId));
-
-    const allPriorCompleted = order.slice(0, lessonIndex).every((l) => completedSet.has(l.id));
-    if (!allPriorCompleted) {
-      throw new ForbiddenException('Oldingi darsni tugatmasdan bu darsga o\'ta olmaysiz');
-    }
 
     const { ceilingIndex } = await this.lessonGatingService.computeEffectiveCeiling(userId);
     if (ceilingIndex !== null && lessonIndex > ceilingIndex) {
@@ -96,12 +95,15 @@ export class ProgressService {
 
     const existing = await this.progressRepo.findOne({ where: { userId, lessonId } });
     const alreadyCompleted = existing?.status === LessonProgressStatus.completed;
+    // Ball backend'da hisoblanadi (utils/lesson-score.ts); ilova yuborgani — faqat hech narsa
+    // ishlanmagan darsda (masalan faqat lug'at)
+    const score = alreadyCompleted ? null : await this.lessonScore.compute(userId, lessonId, existing);
 
     const progress = alreadyCompleted
       ? existing!
       : await this.updateProgress(userId, lessonId, (p) => {
           p.status = LessonProgressStatus.completed;
-          p.score = dto.score;
+          p.score = score ?? dto.score;
           p.timeSpentSec = (p.timeSpentSec ?? 0) + dto.timeSpent;
           p.completedAt = new Date();
           if (!p.attempts) p.attempts = 1;
@@ -239,10 +241,13 @@ export class ProgressService {
       };
     }
 
+    // Ball backend'da hisoblanadi (completeLesson dagi izoh)
+    const score = await this.lessonScore.compute(userId, dto.lessonId, existing);
+
     const progress = await this.updateProgress(userId, dto.lessonId, (p) => {
       p.attempts = (p.attempts ?? 0) + 1;
       p.status = LessonProgressStatus.completed;
-      p.score = dto.score;
+      p.score = score ?? dto.score;
       p.completedAt = new Date();
     });
 

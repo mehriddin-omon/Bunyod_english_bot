@@ -10,6 +10,9 @@ import { Request } from 'express';
 import { config } from '@my/config';
 import { PUBLIC_KEY } from 'src/common/decorators/jwt-public.decorator';
 import { Role } from 'src/common/utils';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+import { touchLastSeen } from 'src/common/services/last-seen';
 
 interface JwtPayload {
   sub: string;           // id 
@@ -22,6 +25,7 @@ export class GuardService implements CanActivate {
   constructor(
     private jwtService: JwtService,
     private reflector: Reflector,
+    @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -47,6 +51,8 @@ export class GuardService implements CanActivate {
     } catch (err) {
       throw new UnauthorizedException('Token noto‘g‘ri yoki muddati tugagan');
     }
+    // «Oxirgi faollik» (users.last_seen_at) — bazaga daqiqasiga ko'pi bilan 1 marta yoziladi
+    touchLastSeen(this.ds, (request as any).user?.sub);
     return true;
   }
 

@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsInt,
   IsISO8601,
   IsOptional,
@@ -13,6 +14,33 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+
+/** Bitta savol natijasi — teacher panelda «qayerda xato qildi» uchun */
+export class ExerciseAnswerItemDto {
+  /** Savol / gap matni (bo'shliq «___») */
+  @IsString()
+  @MaxLength(1000)
+  q: string;
+
+  /** Talaba javobi; bo'sh qoldirilgan bo'lsa null */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  given?: string | null;
+
+  /** To'g'ri javob (namunasi) */
+  @IsString()
+  @MaxLength(1000)
+  expected: string;
+
+  @IsBoolean()
+  ok: boolean;
+
+  /** Avtomatik baholanmaydi (reading tarjimasi) — teacher panelda «Javobi / Namuna», ✓/✗ siz */
+  @IsOptional()
+  @IsBoolean()
+  ungraded?: boolean;
+}
 
 export class ExerciseResultItemDto {
   /** topic_id — dars idsi (lessons.id) */
@@ -70,6 +98,20 @@ export class ExerciseResultItemDto {
   @Min(1)
   @Max(100)
   sectionTotal?: number;
+
+  /** Mashq nomi (ilova registridagi titleUz). Eski ilovalar yubormaydi. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  title?: string;
+
+  /** Savollar bo'yicha natija. Eski ilovalar yubormaydi — natija baribir saqlanadi. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => ExerciseAnswerItemDto)
+  items?: ExerciseAnswerItemDto[];
 
   /** Mashq ishlangan vaqt (ISO 8601, ilovadan) */
   @IsISO8601()

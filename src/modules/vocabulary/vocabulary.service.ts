@@ -13,6 +13,7 @@ import { TtsService } from './tts.service';
 import { VocabStatus } from 'src/common/core/entitys/user-vocabulary-progress.entity';
 import { SessionFilter, SessionMode } from './dto';
 import { XpService } from '../gamification/xp.service';
+import { LessonScoreService } from 'src/common/services/lesson-score.service';
 
 // ── SRS constants ─────────────────────────────────────────────────────────────
 const OVERDUE_MS              = 14 * 86_400_000;
@@ -102,6 +103,36 @@ function computeVocabStatus(current: VocabStatus | undefined): VocabStatus {
   return current === VocabStatus.mastered ? VocabStatus.mastered : VocabStatus.learning;
 }
 
+/**
+ * «idish, taom» → ['idish', 'taom'] — vergul (yoki «;») bilan berilgan ma'nolar ALOHIDA juftlik bo'ladi.
+ * Qavs ichidagi vergul bo'linmaydi: «olmoq (sotib, qabul)» bitta ma'no. Takror va bo'sh qismlar tashlanadi.
+ */
+export function splitMeanings(text: string, max = 8): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of text) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    if ((ch === ',' || ch === ';' || ch === '،') && depth === 0) {
+      parts.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  parts.push(cur);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of parts) {
+    const t = raw.trim();
+    const k = t.toLowerCase();
+    if (t && !seen.has(k)) {
+      seen.add(k);
+      out.push(t);
+    }
+  }
+  return out.slice(0, max);
+}
+
 @Injectable()
 export class VocabularyService {
   constructor(
@@ -133,15 +164,23 @@ export class VocabularyService {
 
     // Coin berish faqat shu servis orqali — daftarga yozilmagan XP yo'q
     private readonly xpService: XpService,
+
+    private readonly lessonScore: LessonScoreService,
   ) {}
 
   // ─── Teacher: word / pair CRUD ──────────────────────────────────────────────
 
   async createWord(data: { word: string; lang: string; ipa?: string; pos?: string; lessonId?: string }) {
+    // Yangi so'z darsning FAOL lug'at to'planiga qo'shiladi (eski to'plamlar o'zgarmaydi)
+    const lesson = data.lessonId ? await this.lessonRepo.findOne({ where: { id: data.lessonId } }) : null;
+    const setNo = lesson?.vocabSetNo ?? 1;
     const maxOrder = await this.wordRepo
       .createQueryBuilder('v')
       .select('MAX(v.order_index)', 'max')
-      .where(data.lessonId ? 'v.lesson_id = :lessonId' : 'v.lesson_id IS NULL', { lessonId: data.lessonId })
+      .where(data.lessonId ? 'v.lesson_id = :lessonId AND v.set_no = :setNo' : 'v.lesson_id IS NULL', {
+        lessonId: data.lessonId,
+        setNo,
+      })
       .getRawOne();
     const orderIndex = parseInt(maxOrder?.max ?? '0', 10) + 1;
 
@@ -151,6 +190,7 @@ export class VocabularyService {
       ipa: data.ipa ?? null,
       pos: (data.pos as any) ?? null,
       lessonId: data.lessonId ?? null,
+      setNo,
       orderIndex,
     });
     const saved = await this.wordRepo.save(word);
@@ -254,10 +294,111 @@ export class VocabularyService {
     return this.exampleRepo.save(entities);
   }
 
+  // ─── Teacher: lug'atni almashtirish (yangi to'plam) ─────────────────────────
+
+  /**
+   * Darsning lug'atini yangi to'plam bilan almashtiradi — ESKI SO'ZLAR O'CHIRILMAYDI.
+   *
+   * 1. Lug'atda faolligi bor (so'z mashqi, bosqich yoki coinli sinov) o'quvchilar eski
+   *    to'plamga mixlanadi (`user_lesson_vocab_set`): ularning progressi, coini va takrorlash
+   *    vaqtlari o'zgarmaydi, dars foizi eski to'plam bo'yicha hisoblanaveradi.
+   * 2. `lessons.vocab_set_no` oshadi — hali lug'atga tegmagan va yangi o'quvchilar yangi
+   *    to'plam bilan davom etadi.
+   * 3. Yangi so'zlar (inglizcha + tarjima) va juftliklar shu to'plamga yoziladi.
+   *
+   * Hammasi bitta tranzaksiyada: xato bo'lsa hech narsa o'zgarmaydi.
+   */
+  async replaceLessonVocabulary(lessonId: string, items: { word: string; ipa?: string; translation: string }[]) {
+    const seen = new Set<string>();
+    const words = items
+      .map((i) => ({ word: i.word.trim(), ipa: i.ipa?.trim() || null, translation: i.translation.trim() }))
+      .filter((i) => i.word && i.translation)
+      .filter((i) => {
+        const key = i.word.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    if (!words.length) throw new BadRequestException("So'zlar ro'yxati bo'sh");
+
+    const result = await this.wordRepo.manager.transaction(async (m) => {
+      const [lesson] = await m.query(`SELECT id, vocab_set_no FROM lessons WHERE id = $1 FOR UPDATE`, [lessonId]);
+      if (!lesson) throw new NotFoundException('Dars topilmadi');
+      const oldSet = Number(lesson.vocab_set_no);
+      const newSet = oldSet + 1;
+
+      // Faolligi bor o'quvchilar eski to'plamda qoladi (allaqachon mixlanganlar tegilmaydi)
+      const pinned: { user_id: string }[] = await m.query(
+        `INSERT INTO user_lesson_vocab_set (user_id, lesson_id, set_no)
+         SELECT DISTINCT t.user_id, $1::uuid, $2::int FROM (
+           SELECT uvp.user_id
+             FROM user_vocabulary_progress uvp
+             JOIN vocabulary_relations r ON r.id = uvp.pair_id
+             JOIN vocabularys src ON src.id = r.vocabulary_id
+            WHERE src.lesson_id = $1 AND src.set_no = $2 AND src.lang = 'en'
+              AND (uvp.attempts > 0 OR uvp.status <> 'new')
+           UNION SELECT user_id FROM vocabulary_stage_progress WHERE lesson_id = $1
+           UNION SELECT user_id FROM vocabulary_coin_tests WHERE lesson_id = $1
+         ) t
+         ON CONFLICT (user_id, lesson_id) DO NOTHING
+         RETURNING user_id`,
+        [lessonId, oldSet],
+      );
+
+      await m.query(`UPDATE lessons SET vocab_set_no = $2 WHERE id = $1`, [lessonId, newSet]);
+
+      const wordRepo = m.getRepository(Vocabulary);
+      const en = await wordRepo.save(
+        words.map((w, i) =>
+          wordRepo.create({ word: w.word, lang: 'en', ipa: w.ipa, pos: null, lessonId, setNo: newSet, orderIndex: i + 1 }),
+        ),
+      );
+      // Har bir ma'no — alohida o'zbekcha so'z va alohida juftlik (relation). Inglizcha so'z bitta qoladi.
+      const flat = words.flatMap((w, i) =>
+        splitMeanings(w.translation).map((t, k) => ({ enIndex: i, text: t, order: k })),
+      );
+      const uz = await wordRepo.save(
+        flat.map((f, j) =>
+          wordRepo.create({ word: f.text, lang: 'uz', ipa: null, pos: null, lessonId, setNo: newSet, orderIndex: j + 1 }),
+        ),
+      );
+      const pairRepo = m.getRepository(VocabularyRelation);
+      await pairRepo.save(
+        flat.map((f, j) =>
+          pairRepo.create({ vocabularyId: en[f.enIndex].id, translationId: uz[j].id, attempts: 0, wrongAttempts: 0, difficulty: 0 }),
+        ),
+      );
+      return { oldSet, newSet, pinnedStudents: pinned.length, created: flat.length, enWords: en };
+    });
+
+    // Talaffuz (TTS) — javobni kutdirmaydi, ketma-ket (provayderga bosim tushmasin)
+    void (async () => {
+      for (const w of result.enWords) {
+        try {
+          const voiceFileId = await this.ttsService.generate(w.word);
+          if (voiceFileId) await this.wordRepo.update(w.id, { voiceFileId });
+        } catch {
+          /* talaffuz keyin `admin/regenerate-tts` bilan to'ldiriladi */
+        }
+      }
+    })();
+
+    return {
+      retiredSet: result.oldSet,
+      activeSet: result.newSet,
+      pinnedStudents: result.pinnedStudents,
+      created: result.created,
+    };
+  }
+
   // ─── Teacher: pairs for lesson ──────────────────────────────────────────────
 
   async getPairsForLesson(lessonId: string) {
-    const words = await this.wordRepo.find({ where: { lessonId, lang: 'en' }, order: { orderIndex: 'ASC' } });
+    const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
+    const words = await this.wordRepo.find({
+      where: { lessonId, lang: 'en', setNo: lesson?.vocabSetNo ?? 1 },
+      order: { orderIndex: 'ASC' },
+    });
     const wordIds = words.map((w) => w.id);
     if (!wordIds.length) return [];
 
@@ -343,7 +484,12 @@ export class VocabularyService {
 
     const [lessons, allWords] = await Promise.all([
       this.lessonRepo.find({ where: { id: In(lessonIds) }, relations: ['unit'], order: { unitId: 'ASC', orderIndex: 'ASC' } }),
-      this.wordRepo.find({ where: { lang: 'en', lessonId: In(lessonIds) } }),
+      this.wordRepo
+        .createQueryBuilder('src')
+        .where('src.lang = :lang', { lang: 'en' })
+        .andWhere('src.lesson_id IN (:...lessonIds)', { lessonIds })
+        .andWhere('vocab_visible(:vsUser, src.lesson_id, src.set_no)', { vsUser: userId })
+        .getMany(),
     ]);
 
     const wordsByLesson = new Map<string, string[]>();
@@ -415,19 +561,24 @@ export class VocabularyService {
     preset?: string;
   }) {
     const empty = { pairs: [], stats: { total: 0, mastered: 0, learning: 0, new: 0, hard: 0, dueToday: 0, overdue: 0 } };
-    const where: any = { lang: 'en' };
+    // Faqat shu o'quvchiga ko'rinadigan lug'at to'plami (vocab_visible)
+    const wordQb = this.wordRepo
+      .createQueryBuilder('src')
+      .where('src.lang = :lang', { lang: 'en' })
+      .andWhere('vocab_visible(:vsUser, src.lesson_id, src.set_no)', { vsUser: userId })
+      .orderBy('src.orderIndex', 'ASC');
     if (filters.lessonId) {
-      where.lessonId = filters.lessonId;
+      wordQb.andWhere('src.lesson_id = :fLesson', { fLesson: filters.lessonId });
     } else if (filters.sectionId) {
       // Bo'lim id si dars id si emas — avval bo'lim darslari olinadi
       const lessons = await this.lessonRepo.find({ where: { unitId: filters.sectionId }, select: { id: true } });
       if (!lessons.length) return empty;
-      where.lessonId = In(lessons.map((l) => l.id));
+      wordQb.andWhere('src.lesson_id IN (:...fLessons)', { fLessons: lessons.map((l) => l.id) });
     }
     const statuses = parseStatuses(filters.status);
     const preset   = filters.preset as SessionFilter | undefined;
 
-    const words = await this.wordRepo.find({ where, order: { orderIndex: 'ASC' } });
+    const words = await wordQb.getMany();
     const wordIds = words.map((w) => w.id);
     if (!wordIds.length) return empty;
 
@@ -583,6 +734,7 @@ export class VocabularyService {
         .select('r.id', 'id')
         .innerJoin('r.vocabulary', 'src')
         .where('src.lang = :lang AND src.lesson_id = :lessonId', { lang: 'en', lessonId })
+        .andWhere('vocab_visible(:vsUser, src.lesson_id, src.set_no)', { vsUser: userId })
         .orderBy('src.order_index', 'ASC')
         .limit(30)
         .getRawMany();
@@ -709,7 +861,9 @@ export class VocabularyService {
         'uvp.pair_id = r.id AND uvp.user_id = :userId',
         { userId },
       )
-      .where('src.lang = :lang', { lang: 'en' });
+      .where('src.lang = :lang', { lang: 'en' })
+      // o'quvchiga ko'rinadigan lug'at to'plami (almashtirilgan darslarda eski/yangi aralashmasin)
+      .andWhere('vocab_visible(:vsUser, src.lesson_id, src.set_no)', { vsUser: userId });
 
     if (params.lessonId) {
       idQb.andWhere('src.lesson_id = :lessonId', { lessonId: params.lessonId });
@@ -1018,6 +1172,8 @@ export class VocabularyService {
       row.passedAt = new Date();
     }
     await this.stageRepo.save(row);
+    // Lug'at «ishlangan» bo'ldi → «Lug'at» kartasi dars balliga qo'shiladi
+    await this.lessonScore.refresh(userId, session.lessonId);
 
     const next = VOCAB_STAGES.find((st) => st.stage === def.stage + 1);
     return {
@@ -1041,6 +1197,7 @@ export class VocabularyService {
         .innerJoin('r.vocabulary', 'src')
         .where('src.lessonId = :lessonId', { lessonId })
         .andWhere('src.lang = :lang', { lang: 'en' })
+        .andWhere('vocab_visible(:vsUser, src.lesson_id, src.set_no)', { vsUser: userId })
         .getCount(),
     ]);
     const byStage = new Map(rows.map((r) => [r.stage, r]));
@@ -1082,9 +1239,12 @@ export class VocabularyService {
   // ─── Teacher: student analytics ─────────────────────────────────────────────
 
   async getStudentAnalytics(studentId: string, lessonId?: string) {
-    const where: any = { lang: 'en' };
-    if (lessonId) where.lessonId = lessonId;
-    const words   = await this.wordRepo.find({ where });
+    const wordQb = this.wordRepo
+      .createQueryBuilder('src')
+      .where('src.lang = :lang', { lang: 'en' })
+      .andWhere('vocab_visible(:vsUser, src.lesson_id, src.set_no)', { vsUser: studentId });
+    if (lessonId) wordQb.andWhere('src.lesson_id = :fLesson', { fLesson: lessonId });
+    const words   = await wordQb.getMany();
     const wordIds = words.map((w) => w.id);
 
     const pairs = wordIds.length

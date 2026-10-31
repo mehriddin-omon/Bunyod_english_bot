@@ -6,6 +6,9 @@ import { Role } from 'src/common/utils/enum';
 import {
   RosterAccessFilter,
   RosterAddedFilter,
+  RosterGuestFilter,
+  RosterSortKey,
+  RosterSortOrder,
   TeacherStudentsService,
 } from './teacher-students.service';
 import {
@@ -45,9 +48,11 @@ export class TeacherStudentsController {
 
   /**
    * O'quvchilar jadvali. Markazdagi barcha role='student' foydalanuvchilar
-   * qaytadi — guruh bo'yicha cheklov yo'q.
+   * qaytadi — guruh bo'yicha cheklov yo'q. Mehmonlar ham kiradi (`isGuest`);
+   * `?guests=only|exclude` bilan ajratiladi.
    *
    * Sahifalab qaytariladi: `page` (1 dan), `limit` (5–100, standart 25).
+   * Saralash: `sort` (name|phone|address|level|added|status), `order` (asc|desc) — standart ism bo'yicha.
    * Qidiruv va filtrlar ham bazada qo'llanadi — aks holda sahifalash noto'g'ri
    * bo'lardi (filter faqat joriy sahifaga tegib qolardi).
    */
@@ -58,6 +63,9 @@ export class TeacherStudentsController {
     @Query('limit') limit?: string,
     @Query('access') access?: RosterAccessFilter,
     @Query('added') added?: RosterAddedFilter,
+    @Query('guests') guests?: RosterGuestFilter,
+    @Query('sort') sort?: RosterSortKey,
+    @Query('order') order?: RosterSortOrder,
   ) {
     return this.service.getRoster({
       search,
@@ -65,6 +73,9 @@ export class TeacherStudentsController {
       limit: limit ? Number(limit) : undefined,
       access,
       added,
+      guests,
+      sort,
+      order,
     });
   }
 

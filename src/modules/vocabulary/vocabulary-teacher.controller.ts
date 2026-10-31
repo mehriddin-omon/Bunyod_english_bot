@@ -4,7 +4,7 @@ import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/utils/enum';
-import { CreateWordDto, UpdateWordDto, CreatePairDto, UpsertExamplesDto } from './dto';
+import { CreateWordDto, UpdateWordDto, CreatePairDto, UpsertExamplesDto, ReplaceLessonVocabularyDto } from './dto';
 
 @Controller('vocabulary')
 @UseGuards(GuardService, RolesGuard)
@@ -48,6 +48,15 @@ export class VocabularyTeacherController {
   @Get('lesson/:lessonId/pairs')
   getPairsForLesson(@Param('lessonId') lessonId: string) {
     return this.vocabularyService.getPairsForLesson(lessonId);
+  }
+
+  /**
+   * POST /vocabulary/lesson/:lessonId/replace — darsning lug'atini YANGI to'plam bilan almashtirish.
+   * Eski so'zlar o'chmaydi; lug'atda faolligi bor o'quvchilar eski to'plamda qoladi.
+   */
+  @Post('lesson/:lessonId/replace')
+  replaceLessonVocabulary(@Param('lessonId') lessonId: string, @Body() body: ReplaceLessonVocabularyDto) {
+    return this.vocabularyService.replaceLessonVocabulary(lessonId, body.words);
   }
 
   // ─── Student analytics ─────────────────────────────────────────────────────

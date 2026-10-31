@@ -4,6 +4,7 @@ import { DataSource, Repository } from 'typeorm';
 import { Group } from 'src/common/core/entitys/group.entity';
 import { Role } from 'src/common/utils/enum';
 import { LessonGatingService } from 'src/common/services/lesson-gating.service';
+import { isUserOnline, latestOf } from 'src/common/services/last-seen';
 
 /**
  * Guruhni boshqarish sahifasi uchun panel endpointlari.
@@ -208,6 +209,7 @@ export class GroupPanelsService {
                  FROM (
                    SELECT u.id,
                           GREATEST(
+                            u.last_seen_at,
                             (SELECT max(lp.updated_at) FROM lesson_progress lp WHERE lp.user_id = u.id),
                             (SELECT max(g.last_activity_date)::timestamptz FROM user_gamification g WHERE g.user_id = u.id)
                           ) AS last_seen
@@ -334,7 +336,8 @@ export class GroupPanelsService {
                 sp.cefr_level AS "cefrLevel",
                 g.xp_total AS "xpTotal", g.level, g.league,
                 g.streak_current AS "streakCurrent", g.rank_weekly AS "rankWeekly",
-                g.xp_weekly AS "xpWeekly", g.last_activity_date AS "lastActivityDate"
+                g.xp_weekly AS "xpWeekly", g.last_activity_date AS "lastActivityDate",
+                u.last_seen_at AS "lastSeenAt"
            FROM users u
       LEFT JOIN student_profiles sp ON sp.user_id = u.id
       LEFT JOIN user_gamification g ON g.user_id = u.id
@@ -415,14 +418,12 @@ export class GroupPanelsService {
       const d: any = dailyMap.get(u.id) ?? {};
       const set: any = setMap.get(u.id) ?? {};
 
-      const lastActivityAt: Date | null =
-        p.last_progress_at
-          ? new Date(p.last_progress_at)
-          : u.lastActivityDate
-          ? new Date(u.lastActivityDate)
-          : d.last_day
-          ? new Date(d.last_day)
-          : null;
+      // Oxirgi faollik — ilovada oxirgi onlayn bo'lgan vaqt (users.last_seen_at); eski yozuvlar uchun
+      // dars/kunlik faollik ham qaraladi — hammasidan ENG SO'NGGISI. Hozir onlayn bo'lsa — hozir.
+      const online = isUserOnline(u.id);
+      const lastActivityAt: Date | null = online
+        ? new Date()
+        : latestOf(u.lastSeenAt, p.last_progress_at, u.lastActivityDate, d.last_day);
 
       const daysSince = lastActivityAt
         ? Math.floor((Date.now() - lastActivityAt.getTime()) / 86400000)
@@ -478,6 +479,8 @@ export class GroupPanelsService {
         manualUnlockCeiling: set.manualUnlockCeiling ?? null,
 
         lastActivityAt: lastActivityAt ? lastActivityAt.toISOString() : null,
+        /** Hozir ilovada (socket ulangan yoki oxirgi 2 daqiqada so'rov) */
+        online,
         daysSinceActive: daysSince,
         status,
       };

@@ -5,6 +5,7 @@ import { Assignment } from 'src/common/core/entitys/assignment.entity';
 import { AssignmentSubmission } from 'src/common/core/entitys/assignment.entity';
 import { Group } from 'src/common/core/entitys/group.entity';
 import { Notification } from 'src/common/core/entitys/notification.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateAssignmentDto, SubmitAssignmentDto, GradeSubmissionDto } from './dto/assignment.dto';
 import { AssignmentStatus, SubmissionStatus, NotificationType, Role } from 'src/common/utils/enum';
 
@@ -22,6 +23,8 @@ export class AssignmentsService {
 
     @InjectRepository(Notification)
     private readonly notificationRepo: Repository<Notification>,
+
+    private readonly notifications: NotificationsService,
   ) {}
 
   async getAssignments(userId: string, userRole: Role): Promise<any> {
@@ -107,19 +110,18 @@ export class AssignmentsService {
     });
     const saved = await this.assignmentRepo.save(assignment);
 
-    // Guruh a'zolariga bildirishnoma
-    for (const member of group.members) {
-      await this.notificationRepo.save(
-        this.notificationRepo.create({
-          userId: member.id,
-          type: NotificationType.assignment,
-          title: 'Yangi topshiriq',
-          body: dto.title,
-          referenceId: saved.id,
-          referenceType: 'assignment',
-        }),
-      );
-    }
+    // Guruh a'zolariga bildirishnoma (ro'yxat + push)
+    await this.notifications.notify(
+      group.members.map((m) => m.id),
+      {
+        type: NotificationType.assignment,
+        title: 'Yangi topshiriq',
+        body: dto.title,
+        referenceId: saved.id,
+        referenceType: 'assignment',
+        channel: 'teacher',
+      },
+    );
 
     return saved;
   }
@@ -210,16 +212,14 @@ export class AssignmentsService {
     await this.submissionRepo.save(submission);
 
     // Bildirishnoma
-    await this.notificationRepo.save(
-      this.notificationRepo.create({
-        userId: submission.studentId,
-        type: NotificationType.assignment,
-        title: "Topshirig'ingiz baholandi",
-        body: `${assignment.title}: ${dto.score}/100`,
-        referenceId: assignmentId,
-        referenceType: 'assignment',
-      }),
-    );
+    await this.notifications.notify([submission.studentId], {
+      type: NotificationType.assignment,
+      title: "Topshirig'ingiz baholandi",
+      body: `${assignment.title}: ${dto.score}/100`,
+      referenceId: assignmentId,
+      referenceType: 'assignment',
+      channel: 'teacher',
+    });
 
     return { ...submission, xp_earned: Math.round(dto.score / 100 * 40) };
   }

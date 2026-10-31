@@ -6,10 +6,11 @@ import { ScheduleSession } from 'src/common/core/entitys/schedule.entity';
 import { Lesson } from 'src/common/core/entitys/lesson.entity';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
 import { Unit } from 'src/common/core/entitys/unit.entity';
+import { User } from 'src/common/core/entitys/user.entity';
 import { LessonGatingService } from './lesson-gating.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Group, GroupMemberSettings, ScheduleSession, Lesson, Unit, LessonProgress])],
+  imports: [TypeOrmModule.forFeature([Group, GroupMemberSettings, ScheduleSession, Lesson, Unit, LessonProgress, User])],
   providers: [LessonGatingService],
   exports: [LessonGatingService],
 })

@@ -29,6 +29,10 @@ export class Lesson extends BaseEntity {
   @Column({ type: 'int', name: 'order_index', default: 0 })
   orderIndex: number;
 
+  /** Darsning FAOL lug'at to'plami (yangi o'quvchilar shuni ko'radi) — database/vocab-sets.sql.ts */
+  @Column({ type: 'int', name: 'vocab_set_no', default: 1 })
+  vocabSetNo: number;
+
   @Column({ type: 'varchar', name: 'status', enum: LessonStatus, default: LessonStatus.draft })
   status: LessonStatus;
 

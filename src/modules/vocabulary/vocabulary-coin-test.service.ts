@@ -15,6 +15,7 @@ import {
 import { XpSource } from 'src/common/utils/enum';
 import { LessonGatingService } from 'src/common/services/lesson-gating.service';
 import { XpService } from '../gamification/xp.service';
+import { LessonScoreService } from 'src/common/services/lesson-score.service';
 
 /**
  * LUG'AT COINLI SINOVI — QOIDALAR (2026-09, foydalanuvchi qarori).
@@ -168,6 +169,7 @@ export class VocabularyCoinTestService {
 
     private readonly xpService: XpService,
     private readonly lessonGatingService: LessonGatingService,
+    private readonly lessonScore: LessonScoreService,
   ) {}
 
   // ─── Ochiq API ────────────────────────────────────────────────────────────
@@ -178,7 +180,7 @@ export class VocabularyCoinTestService {
 
     const [tests, pairs, deadlineAt] = await Promise.all([
       this.testRepo.find({ where: { userId, lessonId }, order: { attemptNumber: 'ASC' } }),
-      this.loadLessonPairs(lessonId),
+      this.loadLessonPairs(userId, lessonId),
       this.computeDeadline(userId, lessonId),
     ]);
 
@@ -235,7 +237,7 @@ export class VocabularyCoinTestService {
     // Tugallanmagan sinov bo'lsa — urinish sarflanadi (qolgan so'zlar xato)
     await this.finalizeStale(userId, lessonId, true);
 
-    const pairs = await this.loadLessonPairs(lessonId);
+    const pairs = await this.loadLessonPairs(userId, lessonId);
     if (!pairs.length) throw new BadRequestException("Bu darsda lug'at so'zlari yo'q");
 
     const [previous, deadlineAt, globalPool] = await Promise.all([
@@ -515,6 +517,8 @@ export class VocabularyCoinTestService {
       this.logRepo.save(logs),
     ]);
     await this.xpService.touchActivity(test.userId);
+    // Mustahkam so'zlar o'zgardi → «Lug'at» foizi va dars balli
+    await this.lessonScore.refresh(test.userId, test.lessonId);
 
     return this.buildResult(test);
   }
@@ -588,13 +592,15 @@ export class VocabularyCoinTestService {
   }
 
   /** Darsning juftliklari (inglizcha so'z + tarjima), o'qituvchi tartibida. */
-  private async loadLessonPairs(lessonId: string): Promise<VocabularyRelation[]> {
+  private async loadLessonPairs(userId: string, lessonId: string): Promise<VocabularyRelation[]> {
     return this.pairRepo
       .createQueryBuilder('r')
       .innerJoinAndSelect('r.vocabulary', 'src')
       .innerJoinAndSelect('r.translation', 'trg')
       .where('src.lessonId = :lessonId', { lessonId })
       .andWhere('src.lang = :lang', { lang: 'en' })
+      // almashtirilgan darsda o'quvchi o'z (mixlangan) lug'at to'plamida sinaladi
+      .andWhere('vocab_visible(:vsUser, src.lesson_id, src.set_no)', { vsUser: userId })
       .orderBy('src.orderIndex', 'ASC')
       .getMany();
   }
