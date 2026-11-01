@@ -65,7 +65,7 @@ const NOTES_1_1: ReleaseNote[] = [
   },
 ];
 
-/** 1.2.0 — bildirishnomalar, onlayn (Zoom) darslar, guruh chati (2026-11) */
+/** 1.2.0 — bildirishnomalar, onlayn (Zoom) darslar, guruh chati, speaking (2026-11) */
 const NOTES_1_2: ReleaseNote[] = [
   {
     icon: 'notifications',
@@ -81,6 +81,11 @@ const NOTES_1_2: ReleaseNote[] = [
     icon: 'chat',
     title: 'Guruh chati',
     text: "Guruhdoshlaringiz va o'qituvchingiz bilan ilova ichida yozishing.",
+  },
+  {
+    icon: 'star',
+    title: 'Speaking mashqlari',
+    text: "Javobingizni ovoz bilan aytib yuboring — o'qituvchi baholaydi, yaxshi javob uchun coin olasiz.",
   },
 ];
 
