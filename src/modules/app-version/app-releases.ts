@@ -114,7 +114,7 @@ const NOTES_1_2_1: ReleaseNote[] = [
 ];
 
 export const ANDROID_RELEASES: AppRelease[] = [
-  { versionCode: 7, versionName: '1.2.1', notes: NOTES_1_2_1 },
+  { versionCode: 8, versionName: '1.2.1', notes: NOTES_1_2_1 },
   { versionCode: 6, versionName: '1.2.0', notes: NOTES_1_2 },
   { versionCode: 5, versionName: '1.1.1', notes: NOTES_1_1 },
   { versionCode: 4, versionName: '1.1.0', notes: NOTES_1_1 },
