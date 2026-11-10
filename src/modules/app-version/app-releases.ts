@@ -89,7 +89,32 @@ const NOTES_1_2: ReleaseNote[] = [
   },
 ];
 
+/** 1.2.1 — yangi Lug'at bo'limi, kun iborasi, test qoliblari, push ulandi (2026-11) */
+const NOTES_1_2_1: ReleaseNote[] = [
+  {
+    icon: 'dictionary',
+    title: "Yangi Lug'at bo'limi",
+    text: "So'zlar bilan tanishing, bo'laklab mashq qiling va coinli sinovdan o'ting.",
+  },
+  {
+    icon: 'star',
+    title: 'Kun iborasi',
+    text: "Har kuni yangi ibora — tinglang, like bosing va o'z misolingizni izohda yozing.",
+  },
+  {
+    icon: 'lesson',
+    title: 'Yangi mashq turlari',
+    text: "Darslarda o'qituvchingiz tayyorlagan yangi turdagi testlar paydo bo'ladi.",
+  },
+  {
+    icon: 'notifications',
+    title: 'Bildirishnomalar',
+    text: "O'qituvchi xabari endi ilova yopiq bo'lsa ham telefoningizga keladi.",
+  },
+];
+
 export const ANDROID_RELEASES: AppRelease[] = [
+  { versionCode: 7, versionName: '1.2.1', notes: NOTES_1_2_1 },
   { versionCode: 6, versionName: '1.2.0', notes: NOTES_1_2 },
   { versionCode: 5, versionName: '1.1.1', notes: NOTES_1_1 },
   { versionCode: 4, versionName: '1.1.0', notes: NOTES_1_1 },
