@@ -37,4 +37,8 @@ export class ReadingContent extends BaseEntity {
 
   @Column({ type: 'int', name: 'order_index', default: 0 })
   orderIndex: number;
+
+  /** Qism topshirig'i (test konstruktori): «Read the following text for questions 21–29.» */
+  @Column({ type: 'text', name: 'instructions', nullable: true })
+  instructions: string | null;
 }

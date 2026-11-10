@@ -103,6 +103,7 @@ export class LessonsService {
       type: e.exerciseType,
       title: e.title,
       instructions: e.instructions,
+      settings: e.settings ?? null,
       orderIndex: e.orderIndex,
       items: (e.items ?? [])
         .slice()
@@ -114,6 +115,7 @@ export class LessonsService {
           options: i.options ?? [],
           imageUrl: i.imageUrl,
           explanation: i.explanation,
+          meta: i.meta ?? null,
           orderIndex: i.orderIndex,
         })),
     }));
@@ -564,6 +566,7 @@ export class LessonsService {
       type: e.exerciseType,
       title: e.title,
       instructions: e.instructions,
+      settings: e.settings ?? null,
       orderIndex: e.orderIndex,
       items: (e.items ?? [])
         .slice()
@@ -575,6 +578,7 @@ export class LessonsService {
           options: i.options ?? [],
           imageUrl: i.imageUrl,
           explanation: i.explanation,
+          meta: i.meta ?? null,
           orderIndex: i.orderIndex,
         })),
     };
@@ -632,7 +636,7 @@ export class LessonsService {
       id: r.id,
       type: 'reading' as const,
       order: 0,
-      reading: { title: r.title, content: r.textContent, wordCount: r.wordCount, readTimeMinutes: r.readingTimeMinutes },
+      reading: { title: r.title, content: r.textContent, wordCount: r.wordCount, readTimeMinutes: r.readingTimeMinutes, instructions: r.instructions ?? null },
       exercises: exercisesForOwner(r.id),
     }));
     const listeningBlocks = listenings.map((l) => ({
@@ -643,6 +647,7 @@ export class LessonsService {
         title: l.title,
         audioUrl: l.fileId || null,
         imageUrl: l.imageUrl,
+        instructions: l.instructions ?? null,
         duration: l.durationSeconds,
         transcript: (l.transcripts ?? [])
           .sort((a, b) => a.orderIndex - b.orderIndex)
@@ -654,7 +659,7 @@ export class LessonsService {
       id: q.id,
       type: 'quiz' as const,
       order: 0,
-      quiz: { title: q.title },
+      quiz: { title: q.title, instructions: q.instructions ?? null },
       exercises: exercisesForOwner(q.id),
     }));
 

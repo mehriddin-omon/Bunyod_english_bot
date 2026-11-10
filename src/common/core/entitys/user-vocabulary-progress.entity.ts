@@ -37,4 +37,23 @@ export class UserVocabularyProgress extends BaseEntity {
 
   @Column({ type: 'timestamptz', name: 'next_review_at', nullable: true })
   nextReviewAt: Date | null;
+
+  /**
+   * SRS pog'onasi (2026-11, «Lenta»): 0 → +1 kun, 1 → +3, 2 → +7, 3 → +30,
+   * 4 — uzoq muddatli (next_review_at = null). «Eslay olmadim» → 0.
+   */
+  @Column({ type: 'int', name: 'srs_step', default: 0 })
+  srsStep: number;
+
+  /** Tanishuv (shorts) da birinchi marta ko'rilgan payt */
+  @Column({ type: 'timestamptz', name: 'seen_at', nullable: true })
+  seenAt: Date | null;
+
+  /** Oxirgi takror (Lenta «Esladim / Eslay olmadim») */
+  @Column({ type: 'timestamptz', name: 'last_reviewed_at', nullable: true })
+  lastReviewedAt: Date | null;
+
+  /** «O'sish nuqtalari» dan chiqarilgan (3 pog'onadan xatosiz o'tdi) */
+  @Column({ type: 'boolean', name: 'growth_cleared', default: false })
+  growthCleared: boolean;
 }

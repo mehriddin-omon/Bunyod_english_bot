@@ -29,6 +29,20 @@ export const GUEST_LESSON_LIMIT_MESSAGE =
 export const LESSON_LOCKED_CODE = 'LESSON_LOCKED';
 export const LESSON_LOCKED_MESSAGE = "Oldingi darsni tugatmasdan bu darsga o'ta olmaysiz";
 
+/**
+ * Talabaning guruhdagi KIRISH REJIMI (teacher → guruh → «Dars ochilishi»):
+ *  - `restricted` (Cheklangan) — guruh chegarasi + ketma-ket qulf;
+ *  - `free` (Erkin)            — guruh chegarasi yo'q, ketma-ket qulf bor;
+ *  - `independent` (Mustaqil)  — BARCHA darslar ochiq, oldingisini tugatmasa ham.
+ */
+export type StudentAccessMode = 'restricted' | 'free' | 'independent';
+
+export function accessModeOf(s?: { isFree?: boolean | null; isIndependent?: boolean | null } | null): StudentAccessMode {
+  if (s?.isIndependent) return 'independent';
+  if (s?.isFree) return 'free';
+  return 'restricted';
+}
+
 export interface EffectiveCeiling {
   /** null = cheklanmagan (guruhsiz yoki "erkin" talaba) */
   ceilingIndex: number | null;
@@ -97,6 +111,9 @@ export class LessonGatingService {
     const user = await this.userRepo.findOne({ where: { id: userId }, select: { id: true, role: true } });
     if (!user || user.role !== Role.student) return null;
 
+    // Mustaqil talaba — hech qaysi dars ketma-ketlik bo'yicha yopilmaydi
+    if (await this.isIndependent(userId)) return new Set();
+
     const order = await this.getPublishedLessonOrder();
     if (order.length === 0) return new Set();
     const completed = await this.getCompletedLessonIds(userId);
@@ -108,6 +125,40 @@ export class LessonGatingService {
       if (!completed.has(order[i].id)) locked.add(order[i].id);
     }
     return locked;
+  }
+
+  /**
+   * Talaba YETIB KELGAN (ochiq) darslar: tugatilganlar + birinchi tugatilmagan dars
+   * (`getLockedLessonIds` bilan aynan bir qoida); mehmonda — faqat birinchi
+   * GUEST_LESSON_LIMIT ta ichidan. Lug'at bo'limi (ro'yxat, statistika, yodlash)
+   * faqat shu darslar so'zlarini ko'rsatadi. Talaba bo'lmasa — null (cheklov yo'q).
+   */
+  async getReachedLessonIds(userId?: string | null): Promise<Set<string> | null> {
+    if (!userId) return null;
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: { id: true, role: true, isGuest: true } });
+    if (!user || user.role !== Role.student) return null;
+
+    const [order, completed, independent] = await Promise.all([
+      this.getPublishedLessonOrder(),
+      this.getCompletedLessonIds(userId),
+      this.isIndependent(userId),
+    ]);
+    // Mustaqil talaba — barcha darslar yetib kelgan (mehmon chegarasi baribir)
+    if (independent) {
+      return new Set((user.isGuest ? order.slice(0, GUEST_LESSON_LIMIT) : order).map((l) => l.id));
+    }
+    const reached = new Set<string>();
+    let currentTaken = false;
+    for (let i = 0; i < order.length; i++) {
+      if (user.isGuest && i >= GUEST_LESSON_LIMIT) break;
+      const id = order[i].id;
+      if (completed.has(id)) reached.add(id);
+      else if (!currentTaken) {
+        reached.add(id);
+        currentTaken = true;
+      }
+    }
+    return reached;
   }
 
   /** Talaba yopiq darsga kirsa 403 + `code: LESSON_LOCKED` (kontent, javob yuborish, boshlash, yakunlash) */
@@ -158,7 +209,7 @@ export class LessonGatingService {
     if (!group || !group.autoAdvanceEnabled) return firstOpenedAt();
 
     const settings = await this.settingsRepo.findOne({ where: { groupId: group.id, userId } });
-    if (settings?.isFree) return firstOpenedAt();
+    if (settings?.isFree || settings?.isIndependent) return firstOpenedAt();
 
     // i-nchi (1 dan boshlab) bekor qilinmagan sessiya — `getGroupCeilingIndex`
     // bilan bir xil to'plam, faqat sanaga emas, tartibga qarab olinadi.
@@ -205,6 +256,25 @@ export class LessonGatingService {
     return ordered;
   }
 
+  /**
+   * Talaba joriy guruhida «Mustaqil» rejimdami (`group_member_settings.is_independent`).
+   * Guruhdan chiqarilgan bo'lsa eski sozlama hisobga olinmaydi.
+   */
+  async isIndependent(userId: string): Promise<boolean> {
+    // Talaba bir nechta guruhda bo'lishi mumkin — `findStudentGroup` ixtiyoriy BITTASINI qaytaradi,
+    // teacher esa rejimni boshqa guruh sahifasida qo'ygan bo'lishi mumkin. Shuning uchun HAR QANDAY
+    // joriy guruhidagi «Mustaqil» sozlama hisobga olinadi (guruhdan chiqarilgani — yo'q).
+    const rows: unknown[] = await this.settingsRepo.query(
+      `SELECT 1
+         FROM group_member_settings s
+         JOIN group_members gm ON gm.group_id = s.group_id AND gm.user_id = s.user_id
+        WHERE s.user_id = $1 AND s.is_independent = true
+        LIMIT 1`,
+      [userId],
+    );
+    return rows.length > 0;
+  }
+
   async findStudentGroup(userId: string): Promise<Group | null> {
     return this.groupRepo
       .createQueryBuilder('g')
@@ -228,7 +298,7 @@ export class LessonGatingService {
   /**
    * Talaba uchun samarali (effective) chegara indeksini hisoblaydi.
    * - Guruhsiz talaba -> cheklanmagan (null).
-   * - "Erkin" (isFree) talaba -> cheklanmagan (null).
+   * - "Erkin" (isFree) yoki "Mustaqil" (isIndependent) talaba -> cheklanmagan (null).
    * - Aks holda -> max(guruh chegarasi, talabaga berilgan individual ustama).
    */
   async computeEffectiveCeiling(userId: string): Promise<EffectiveCeiling> {
@@ -236,7 +306,8 @@ export class LessonGatingService {
     if (!group) return { ceilingIndex: null, groupId: null };
 
     const settings = await this.settingsRepo.findOne({ where: { groupId: group.id, userId } });
-    if (settings?.isFree) return { ceilingIndex: null, groupId: group.id };
+    if (settings?.isFree || settings?.isIndependent) return { ceilingIndex: null, groupId: group.id };
+    if (await this.isIndependent(userId)) return { ceilingIndex: null, groupId: group.id };
 
     const groupCeiling = await this.getGroupCeilingIndex(group);
     const effectiveCeiling = Math.max(groupCeiling, settings?.manualUnlockCeiling ?? -Infinity);

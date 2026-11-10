@@ -39,8 +39,13 @@ export interface CoinTestCard {
   mode: CoinTestCardMode;
   /** 4 ta variant (to'g'risi ham ichida), aralashtirilgan; typing'da bo'sh */
   options: string[];
-  /** oldingi urinishda xato bo'lganmi (2-/3-urinish coini shunga qaraydi) */
+  /** oldingi urinishda xato bo'lganmi (eski qoida; ma'lumot uchun qoldirilgan) */
   prevWrong: boolean;
+  /**
+   * Shu so'z coinli sinovda nechinchi marta so'ralmoqda (2026-11): 1 → +2,
+   * 2 → +1, 3+ → 0. Eski sinovlarda yo'q.
+   */
+  wordAttempt?: number;
   /** talaba tanlagan variant; null — vaqt tugadi / javob berilmadi */
   answer: string | null;
   /** null — hali javob berilmagan */
@@ -54,8 +59,8 @@ export interface CoinTestCard {
  * LUG'AT COINLI SINOVI — bitta urinish.
  *
  * Dars lug'atidagi HAMMA so'z 10 soniyalik taymer bilan variantli so'raladi.
- * Coin qoidalari `VocabularyCoinTestService` da (3/2/1 coin, bonus, jarima,
- * 24 soatlik muddat). Bir dars uchun urinishlar ketma-ket raqamlanadi.
+ * Coin qoidalari `VocabularyCoinTestService` da (2/1 coin, bonus, jarima,
+ * muddat yo'q). Bir dars uchun urinishlar ketma-ket raqamlanadi.
  */
 @Entity({ name: 'vocabulary_coin_tests' })
 @Index(['userId', 'lessonId'])
@@ -74,7 +79,14 @@ export class VocabularyCoinTest extends BaseEntity {
   @JoinColumn({ name: 'lesson_id' })
   lesson: Lesson;
 
-  /** shu dars bo'yicha nechinchi urinish (1 dan boshlab) */
+  /**
+   * Qism (2026-11): dars lug'ati 35 tadan qismlarga bo'linadi (1 → 1–35,
+   * 2 → 36–70). Eski sinovlarda null (butun dars).
+   */
+  @Column({ type: 'int', name: 'part', nullable: true })
+  part: number | null;
+
+  /** shu dars (va qism) bo'yicha nechinchi urinish (1 dan boshlab) */
   @Column({ type: 'int', name: 'attempt_number', default: 1 })
   attemptNumber: number;
 
@@ -92,7 +104,7 @@ export class VocabularyCoinTest extends BaseEntity {
   @Column({ type: 'timestamptz', name: 'last_served_at', nullable: true })
   lastServedAt: Date | null;
 
-  /** coin muddati (keyingi dars sinfda ochilgan vaqt + 24 soat); null — muddat yo'q */
+  /** eskirgan: coin muddati olib tashlangan (2026-11), yangi sinovlarda doim null */
   @Column({ type: 'timestamptz', name: 'deadline_at', nullable: true })
   deadlineAt: Date | null;
 
@@ -112,7 +124,7 @@ export class VocabularyCoinTest extends BaseEntity {
   @Column({ type: 'boolean', name: 'coins_eligible', default: true })
   coinsEligible: boolean;
 
-  /** so'zlar uchun berilgan coin (3/2/1 × to'g'ri so'zlar) */
+  /** so'zlar uchun berilgan coin (2/1 × to'g'ri so'zlar) */
   @Column({ type: 'int', name: 'coins_words', default: 0 })
   coinsWords: number;
 

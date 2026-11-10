@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { QuizContent } from 'src/common/core/entitys/quiz-content.entity';
 import { ReadingContent } from 'src/common/core/entitys/reading-content.entity';
 import { ListeningContent } from 'src/common/core/entitys/listening-content.entity';
@@ -16,6 +16,7 @@ import {
   QuizExerciseType,
   StudentAnswerBlockType,
 } from 'src/common/utils/enum';
+import { gradeTemplateItem, isScoredItem, isTemplateSettings } from 'src/common/utils/exercise-templates';
 
 export interface SubmittedAnswer {
   questionId: string;
@@ -174,7 +175,10 @@ export class StudentAnswersService {
   }
 
   /** Bitta itemni exercise turiga qarab baholaydi. */
-  private gradeItem(exerciseType: QuizExerciseType, item: ExerciseItem, ans: string | undefined): boolean {
+  private gradeItem(ex: Exercise, item: ExerciseItem, ans: string | undefined): boolean {
+    // «Test qoliblari» formatidagi mashq — yagona qoidalar (exercise-templates.ts)
+    if (isTemplateSettings(ex.settings)) return gradeTemplateItem(ex.exerciseType, ex.settings, item, ans);
+    const exerciseType = ex.exerciseType;
     if (ans === undefined || norm(ans) === '') return false;
     if (exerciseType === QuizExerciseType.true_false) {
       return eq(ans, item.correctAnswer);
@@ -228,27 +232,44 @@ export class StudentAnswersService {
     const given = this.toMap(answers);
     const results: ItemResult[] = [];
     const rows: { questionId: string; givenAnswer: string; isCorrect: boolean }[] = [];
-    let correct = 0;
-    let total = 0;
+    /** Ballga kiruvchi elementlar (namuna qatorlari va qo'lda tekshiriladigan tarjima — yo'q) */
+    const scoredIds: string[] = [];
 
     for (const ex of exercises) {
-      // Translation mashqlari ballga kirmaydi (javob baribir saqlanadi)
-      const scored = ex.exerciseType !== QuizExerciseType.translation;
+      // Eski format: translation ballga kirmaydi. Qolip: translation `grading: 'auto'` bo'lsa kiradi.
+      const template = isTemplateSettings(ex.settings) ? ex.settings : null;
       for (const item of ex.items ?? []) {
+        const scored = template
+          ? isScoredItem(ex.exerciseType, template, item)
+          : ex.exerciseType !== QuizExerciseType.translation;
+        if (scored) scoredIds.push(item.id);
         const ans = given.get(item.id);
-        const isCorrect = this.gradeItem(ex.exerciseType, item, ans);
-        if (scored) {
-          total++;
-          if (isCorrect) correct++;
-        }
+        if (ans === undefined) continue;
+        const isCorrect = this.gradeItem(ex, item, ans);
         results.push({ questionId: item.id, isCorrect, correctAnswer: item.correctAnswer });
-        if (ans !== undefined) rows.push({ questionId: item.id, givenAnswer: ans, isCorrect });
+        rows.push({ questionId: item.id, givenAnswer: ans, isCorrect });
       }
     }
 
     await this.saveAnswers(userId, lessonId, blockType, blockId, rows);
+
+    // Foiz — blokdagi BARCHA ballga kiruvchi savollar bo'yicha, talabaning SO'NGGI javoblaridan.
+    // Bitta blokdagi mashqlar bir necha so'rovda yuborilishi mumkin (masalan grammatika
+    // kartalari orasidagi mashqlar, yoki eski + qolip mashqlari) — har yuborishda oldingi
+    // javoblar ham hisobga olinadi, ball «oxirgi yuborilgan qism» bilan almashib qolmaydi.
+    let correct = 0;
+    if (scoredIds.length) {
+      const stored = await this.answerRepo.find({
+        where: { userId, blockType, questionId: In(scoredIds) },
+        select: ['questionId', 'isCorrect'],
+      });
+      correct = stored.filter((a) => a.isCorrect).length;
+    }
+    const total = scoredIds.length;
     const out = this.buildResult(blockId, results, correct, total);
-    if (total > 0) await this.updateProgressScore(userId, lessonId, SCORE_FIELD[blockType], out.percent);
+    if (total > 0 && rows.length > 0) {
+      await this.updateProgressScore(userId, lessonId, SCORE_FIELD[blockType], out.percent);
+    }
     return { blockType, ...out };
   }
 

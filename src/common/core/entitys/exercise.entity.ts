@@ -45,6 +45,14 @@ export class Exercise extends BaseEntity {
   @Column({ type: 'int', name: 'order_index', default: 0 })
   orderIndex: number;
 
+  /**
+   * Qolip sozlamalari (2026-11, «Test qoliblari»). `{ v: 1, ... }` bo'lsa mashq
+   * yangi qolip formatida; null — eski format. Har tur uchun maydonlar:
+   * `common/utils/exercise-templates.ts` (ExerciseSettings).
+   */
+  @Column({ type: 'jsonb', name: 'settings', nullable: true })
+  settings: Record<string, any> | null;
+
   @OneToMany(() => ExerciseItem, (i) => i.exercise, { cascade: true })
   items: ExerciseItem[];
 }

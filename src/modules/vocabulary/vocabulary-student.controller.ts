@@ -31,7 +31,7 @@ export class VocabularyStudentController {
   /** POST /vocabulary/coin-test/start — yangi urinish */
   @Post('coin-test/start')
   startCoinTest(@Req() req: any, @Body() body: StartCoinTestDto) {
-    return this.coinTestService.start(req.user.sub, body.lessonId);
+    return this.coinTestService.start(req.user.sub, body.lessonId, body.part ?? 1);
   }
 
   /** POST /vocabulary/coin-test/:testId/answer — bitta so'zga javob (server vaqtni tekshiradi) */

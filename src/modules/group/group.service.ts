@@ -16,9 +16,10 @@ import {
   SetAutoAdvanceDto,
   SetManualCeilingDto,
   SetStudentFreeDto,
+  SetStudentAccessDto,
   UnlockNextDto,
 } from './dto/group.dto';
-import { LessonGatingService } from 'src/common/services/lesson-gating.service';
+import { LessonGatingService, accessModeOf } from 'src/common/services/lesson-gating.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
@@ -376,7 +377,15 @@ export class GroupService {
     const completedUserIds = new Set(progressRecords.map((p) => p.userId));
     const settingsByUser = new Map(settingsRecords.map((s) => [s.userId, s]));
 
-    const completed: Array<{ studentId: string; firstName: string | null; lastName: string | null; isFree: boolean; manualUnlockCeiling: number | null }> = [];
+    const completed: Array<{
+      studentId: string;
+      firstName: string | null;
+      lastName: string | null;
+      isFree: boolean;
+      isIndependent: boolean;
+      accessMode: ReturnType<typeof accessModeOf>;
+      manualUnlockCeiling: number | null;
+    }> = [];
     const notCompleted: typeof completed = [];
 
     for (const member of group.members) {
@@ -386,6 +395,8 @@ export class GroupService {
         firstName: member.firstName,
         lastName: member.lastName,
         isFree: settings?.isFree ?? false,
+        isIndependent: settings?.isIndependent ?? false,
+        accessMode: accessModeOf(settings),
         manualUnlockCeiling: settings?.manualUnlockCeiling ?? null,
       };
       (completedUserIds.has(member.id) ? completed : notCompleted).push(entry);
@@ -412,9 +423,34 @@ export class GroupService {
     let settings = await this.settingsRepo.findOne({ where: { groupId, userId: studentId } });
     if (!settings) settings = this.settingsRepo.create({ groupId, userId: studentId });
     settings.isFree = dto.isFree;
+    // Erkin bekor qilinsa «Mustaqil» ham bekor (eski endpoint bilan mos)
+    if (!dto.isFree) settings.isIndependent = false;
     await this.settingsRepo.save(settings);
 
-    return { studentId, isFree: settings.isFree };
+    return { studentId, isFree: settings.isFree, accessMode: accessModeOf(settings) };
+  }
+
+  /**
+   * Kirish rejimi (teacher → guruh → «Dars ochilishi»):
+   *  - restricted — guruh chegarasi + ketma-ket qulf;
+   *  - free       — guruh chegarasisiz, lekin ketma-ket (oldingi dars tugatilishi kerak);
+   *  - independent — «Mustaqil»: barcha darslar ochiq, 1-darsni ishlamasa ham.
+   */
+  async setStudentAccess(groupId: string, studentId: string, dto: SetStudentAccessDto, userId: string, role: string) {
+    const group = await this.groupRepo.findOne({ where: { id: groupId }, relations: ['members'] });
+    if (!group) throw new NotFoundException('Group not found');
+    if (role === Role.teacher && group.teacherId !== userId) throw new ForbiddenException('Access denied');
+    if (!group.members.some((m) => m.id === studentId)) {
+      throw new NotFoundException("Bu o'quvchi guruh a'zosi emas");
+    }
+
+    let settings = await this.settingsRepo.findOne({ where: { groupId, userId: studentId } });
+    if (!settings) settings = this.settingsRepo.create({ groupId, userId: studentId });
+    settings.isFree = dto.mode !== 'restricted';
+    settings.isIndependent = dto.mode === 'independent';
+    await this.settingsRepo.save(settings);
+
+    return { studentId, accessMode: accessModeOf(settings), isFree: settings.isFree, isIndependent: settings.isIndependent };
   }
 
   async unlockNextForStudents(groupId: string, dto: UnlockNextDto, userId: string, role: string) {

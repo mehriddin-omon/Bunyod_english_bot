@@ -3,7 +3,7 @@ import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role, QuestionType } from 'src/common/utils/enum';
-import { BlocksService } from './blocks.service';
+import { BlocksService, SaveExerciseFullDto } from './blocks.service';
 
 @Controller('teacher/lessons/:lessonId')
 @UseGuards(GuardService, RolesGuard)
@@ -150,7 +150,7 @@ export class BlocksController {
   }
 
   @Put('blocks/:blockId/quiz')
-  saveQuiz(@Param('lessonId') lessonId: string, @Param('blockId') blockId: string, @Body() dto: { title?: string }) {
+  saveQuiz(@Param('lessonId') lessonId: string, @Param('blockId') blockId: string, @Body() dto: { title?: string; instructions?: string | null }) {
     return this.svc.saveQuiz(lessonId, blockId, dto);
   }
 
@@ -167,7 +167,7 @@ export class BlocksController {
   addExerciseGeneric(
     @Param('lessonId') lessonId: string,
     @Param('blockId') blockId: string,
-    @Body() dto: { title?: string; instructions?: string; exerciseType: string },
+    @Body() dto: { title?: string; instructions?: string; exerciseType: string; settings?: Record<string, any> | null },
   ) {
     return this.svc.addExercise(lessonId, blockId, dto);
   }
@@ -186,9 +186,20 @@ export class BlocksController {
     @Param('lessonId') lessonId: string,
     @Param('blockId') blockId: string,
     @Param('exerciseId') exerciseId: string,
-    @Body() dto: { title?: string; instructions?: string; exerciseType?: string },
+    @Body() dto: { title?: string; instructions?: string; exerciseType?: string; settings?: Record<string, any> | null },
   ) {
     return this.svc.updateExercise(lessonId, blockId, exerciseId, dto);
+  }
+
+  /** Qolip muharriri: mashq + barcha elementlarini bitta so'rovda saqlash */
+  @Put('blocks/:blockId/exercises/:exerciseId/full')
+  saveExerciseFull(
+    @Param('lessonId') lessonId: string,
+    @Param('blockId') blockId: string,
+    @Param('exerciseId') exerciseId: string,
+    @Body() dto: SaveExerciseFullDto,
+  ) {
+    return this.svc.saveExerciseFull(lessonId, blockId, exerciseId, dto);
   }
 
   @Delete('blocks/:blockId/exercises/:exerciseId')

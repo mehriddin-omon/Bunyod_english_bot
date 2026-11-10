@@ -14,6 +14,7 @@ import { VocabStatus } from 'src/common/core/entitys/user-vocabulary-progress.en
 import { SessionFilter, SessionMode } from './dto';
 import { XpService } from '../gamification/xp.service';
 import { LessonScoreService } from 'src/common/services/lesson-score.service';
+import { LessonGatingService } from 'src/common/services/lesson-gating.service';
 
 // ── SRS constants ─────────────────────────────────────────────────────────────
 const OVERDUE_MS              = 14 * 86_400_000;
@@ -166,7 +167,25 @@ export class VocabularyService {
     private readonly xpService: XpService,
 
     private readonly lessonScore: LessonScoreService,
+
+    private readonly lessonGating: LessonGatingService,
   ) {}
+
+  /**
+   * LUG'AT FAQAT YETIB KELGAN DARSLARDAN (2026-11): talaba hali ochmagan (qulfli)
+   * darslar so'zlari Lug'at ro'yxati, statistikasi, yodlash va takrorlashga tushmaydi.
+   * Darsga bog'lanmagan so'z ham talabaga chiqmaydi. Teacher/admin — null (cheklovsiz).
+   * Qaytgan shart `src` (vocabularys) aliasi uchun: `qb.andWhere(scope[0], scope[1])`.
+   */
+  private async reachedLessonsWhere(
+    userId: string,
+    alias = 'src',
+  ): Promise<[string, Record<string, unknown>] | null> {
+    const reached = await this.lessonGating.getReachedLessonIds(userId);
+    if (!reached) return null;
+    if (!reached.size) return ['1 = 0', {}];
+    return [`${alias}.lesson_id IN (:...reachedLessonIds)`, { reachedLessonIds: [...reached] }];
+  }
 
   // ─── Teacher: word / pair CRUD ──────────────────────────────────────────────
 
@@ -409,19 +428,37 @@ export class VocabularyService {
       .where('r.vocabulary_id IN (:...ids)', { ids: wordIds })
       .getMany();
 
-    return pairs.map((p) => ({
-      pairId:        p.id,
-      vocabularyId:  p.vocabularyId,
-      translationId: p.translationId,
-      word:          p.vocabulary.word,
-      ipa:           p.vocabulary.ipa,
-      pos:           p.vocabulary.pos,
-      imageUrl:      p.vocabulary.imageUrl,
-      translation:   p.translation.word,
-      attempts:      p.attempts,
-      wrongAttempts: p.wrongAttempts,
-      difficulty:    p.difficulty,
-    }));
+    // «Urinish» / «Qiyinlik» — barcha javoblar daftaridan (vocabulary_practice_logs):
+    // eski sessiyalar, Testlash lentasi, Lug'at tabidagi takror va coinli sinov.
+    const stats = await this.logRepo
+      .createQueryBuilder('l')
+      .select('l.pair_id', 'pairId')
+      .addSelect('COUNT(*)::int', 'attempts')
+      .addSelect('COUNT(*) FILTER (WHERE l.correct = false)::int', 'wrong')
+      .where('l.pair_id IN (:...pairIds)', { pairIds: pairs.map((p) => p.id) })
+      .groupBy('l.pair_id')
+      .getRawMany<{ pairId: string; attempts: number; wrong: number }>();
+    const statMap = new Map(stats.map((r) => [r.pairId, r]));
+
+    return pairs.map((p) => {
+      const st = statMap.get(p.id);
+      // daftar bo'lmasa (juda eski ma'lumot) — juftlikdagi hisoblagich
+      const attempts = Math.max(Number(st?.attempts ?? 0), Number(p.attempts ?? 0));
+      const wrongAttempts = st && Number(st.attempts) >= Number(p.attempts ?? 0) ? Number(st.wrong) : Number(p.wrongAttempts ?? 0);
+      return {
+        pairId:        p.id,
+        vocabularyId:  p.vocabularyId,
+        translationId: p.translationId,
+        word:          p.vocabulary.word,
+        ipa:           p.vocabulary.ipa,
+        pos:           p.vocabulary.pos,
+        imageUrl:      p.vocabulary.imageUrl,
+        translation:   p.translation.word,
+        attempts,
+        wrongAttempts,
+        difficulty:    attempts > 0 ? wrongAttempts / attempts : 0,
+      };
+    });
   }
 
   // ─── Pair detail (teacher edit + student word card) ─────────────────────────
@@ -479,7 +516,10 @@ export class VocabularyService {
       .andWhere('v.lesson_id IS NOT NULL')
       .getRawMany();
 
-    const lessonIds: string[] = rows.map((r) => r.lessonId).filter(Boolean);
+    const reached = await this.lessonGating.getReachedLessonIds(userId);
+    const lessonIds: string[] = rows
+      .map((r) => r.lessonId)
+      .filter((id): id is string => !!id && (!reached || reached.has(id)));
     if (!lessonIds.length) return [];
 
     const [lessons, allWords] = await Promise.all([
@@ -567,6 +607,9 @@ export class VocabularyService {
       .where('src.lang = :lang', { lang: 'en' })
       .andWhere('vocab_visible(:vsUser, src.lesson_id, src.set_no)', { vsUser: userId })
       .orderBy('src.orderIndex', 'ASC');
+    // Faqat talaba yetib kelgan darslar so'zlari
+    const scope = await this.reachedLessonsWhere(userId);
+    if (scope) wordQb.andWhere(scope[0], scope[1]);
     if (filters.lessonId) {
       wordQb.andWhere('src.lesson_id = :fLesson', { fLesson: filters.lessonId });
     } else if (filters.sectionId) {
@@ -701,14 +744,32 @@ export class VocabularyService {
   async getStudentStats(userId: string) {
     // Faqat inglizcha so'z juftlari — ro'yxat (`getStudentVocabulary`) ham
     // aynan shularni ko'rsatadi, filtr kartasidagi son ro'yxat bilan mos kelsin
-    const [total, progressList] = await Promise.all([
-      this.pairRepo
+    const scope = await this.reachedLessonsWhere(userId);
+    let total: number;
+    let progressList: UserVocabularyProgress[];
+    if (scope) {
+      // Talaba: faqat yetib kelgan darslar (ro'yxat bilan bir xil to'plam)
+      const rows: { id: string }[] = await this.pairRepo
         .createQueryBuilder('r')
+        .select('r.id', 'id')
         .innerJoin('r.vocabulary', 'src')
         .where('src.lang = :lang', { lang: 'en' })
-        .getCount(),
-      this.progressRepo.find({ where: { userId } }),
-    ]);
+        .andWhere('vocab_visible(:vsUser, src.lesson_id, src.set_no)', { vsUser: userId })
+        .andWhere(scope[0], scope[1])
+        .getRawMany();
+      const ids = rows.map((r) => r.id);
+      total = ids.length;
+      progressList = ids.length ? await this.progressRepo.find({ where: { userId, pairId: In(ids) } }) : [];
+    } else {
+      [total, progressList] = await Promise.all([
+        this.pairRepo
+          .createQueryBuilder('r')
+          .innerJoin('r.vocabulary', 'src')
+          .where('src.lang = :lang', { lang: 'en' })
+          .getCount(),
+        this.progressRepo.find({ where: { userId } }),
+      ]);
+    }
 
     const now = new Date();
     const mastered = progressList.filter((p) => p.status === VocabStatus.mastered).length;
@@ -726,6 +787,7 @@ export class VocabularyService {
     const now          = new Date();
     const selectedIds: string[] = [];
     const idSet        = new Set<string>();
+    const scope        = await this.reachedLessonsWhere(userId);
 
     // Part 1: current lesson vocab (order_index asc, max 30)
     if (lessonId) {
@@ -735,6 +797,7 @@ export class VocabularyService {
         .innerJoin('r.vocabulary', 'src')
         .where('src.lang = :lang AND src.lesson_id = :lessonId', { lang: 'en', lessonId })
         .andWhere('vocab_visible(:vsUser, src.lesson_id, src.set_no)', { vsUser: userId })
+        .andWhere(scope ? scope[0] : 'TRUE', scope ? scope[1] : {})
         .orderBy('src.order_index', 'ASC')
         .limit(30)
         .getRawMany();
@@ -760,6 +823,7 @@ export class VocabularyService {
         .where('src.lang = :lang', { lang: 'en' })
         .andWhere('uvp.status != :mastered', { mastered: VocabStatus.mastered })
         .andWhere('uvp.next_review_at <= :now', { now });
+      if (scope) dueQb.andWhere(scope[0], scope[1]);
 
       if (lessonId) {
         dueQb.andWhere('(src.lesson_id IS NULL OR src.lesson_id != :lessonId)', { lessonId });
@@ -864,6 +928,9 @@ export class VocabularyService {
       .where('src.lang = :lang', { lang: 'en' })
       // o'quvchiga ko'rinadigan lug'at to'plami (almashtirilgan darslarda eski/yangi aralashmasin)
       .andWhere('vocab_visible(:vsUser, src.lesson_id, src.set_no)', { vsUser: userId });
+    // Talaba: faqat yetib kelgan darslar so'zlari (ro'yxat bilan bir xil)
+    const scope = await this.reachedLessonsWhere(userId);
+    if (scope) idQb.andWhere(scope[0], scope[1]);
 
     if (params.lessonId) {
       idQb.andWhere('src.lesson_id = :lessonId', { lessonId: params.lessonId });

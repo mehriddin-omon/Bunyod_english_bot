@@ -23,6 +23,13 @@ export class GroupMemberSettings extends BaseEntity {
   @Column({ type: 'boolean', name: 'is_free', default: false })
   isFree: boolean;
 
+  /**
+   * MUSTAQIL: talabaga BARCHA nashr qilingan darslar ochiq — oldingi darsni tugatmasa ham
+   * (ketma-ket qulf ham, guruh chegarasi ham qo'llanmaydi). Mehmon chegarasi baribir qoladi.
+   */
+  @Column({ type: 'boolean', name: 'is_independent', default: false })
+  isIndependent: boolean;
+
   @Column({ type: 'int', name: 'manual_unlock_ceiling', nullable: true })
   manualUnlockCeiling: number | null;
 }

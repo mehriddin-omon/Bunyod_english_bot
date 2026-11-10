@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsUUID } from 'class-validator';
+import { IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
 export class UpdateLessonDto {
   @IsOptional()
@@ -20,4 +20,11 @@ export class UpdateLessonDto {
   @IsOptional()
   @IsUUID()
   groupId?: string | null;
+
+  /** Taxminiy vaqt, daqiqa (test konstruktoridagi «Vaqt») */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(600)
+  estimatedMinutes?: number;
 }

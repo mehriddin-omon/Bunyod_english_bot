@@ -26,11 +26,13 @@ interface AddExerciseDto {
   title?: string;
   instructions?: string;
   exerciseType: string;
+  settings?: Record<string, any> | null;
 }
 interface UpdateExerciseDto {
   title?: string;
   instructions?: string;
   exerciseType?: string;
+  settings?: Record<string, any> | null;
 }
 interface AddItemDto {
   itemText: string;
@@ -38,6 +40,7 @@ interface AddItemDto {
   options?: ExerciseOption[] | null;
   imageUrl?: string | null;
   explanation?: string | null;
+  meta?: Record<string, any> | null;
 }
 interface UpdateItemDto {
   itemText?: string;
@@ -45,7 +48,16 @@ interface UpdateItemDto {
   options?: ExerciseOption[] | null;
   imageUrl?: string | null;
   explanation?: string | null;
+  meta?: Record<string, any> | null;
 }
+/** Qolipni bitta so'rovda saqlash: mashq + uning BARCHA elementlari (tartib bo'yicha) */
+export interface SaveExerciseFullDto extends UpdateExerciseDto {
+  items: (AddItemDto & { id?: string | null })[];
+}
+
+/** settings/meta — faqat oddiy JSON obyekt (massiv yoki satr emas) */
+const asObject = (v: unknown): Record<string, any> | null =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, any>) : null;
 
 @Injectable()
 export class BlocksService {
@@ -104,6 +116,7 @@ export class BlocksService {
       title: e.title,
       instructions: e.instructions,
       exerciseType: e.exerciseType,
+      settings: e.settings ?? null,
       orderIndex: e.orderIndex,
       items: (e.items ?? [])
         .slice()
@@ -120,18 +133,28 @@ export class BlocksService {
       options: i.options ?? null,
       imageUrl: i.imageUrl,
       explanation: i.explanation,
+      meta: i.meta ?? null,
       orderIndex: i.orderIndex,
     };
+  }
+
+  private assertType(type: string | undefined) {
+    if (!Object.values(QuizExerciseType).includes(type as QuizExerciseType)) {
+      throw new BadRequestException("Noto'g'ri mashq turi");
+    }
   }
 
   private async exerciseSummary(ownerType: StudentAnswerBlockType, blockId: string) {
     const exercises = await this.exerciseRepo.find({
       where: { ownerBlockType: ownerType, ownerBlockId: blockId },
       relations: ['items'],
+      order: { orderIndex: 'ASC' },
     });
     return {
       exerciseCount: exercises.length,
       itemCount: exercises.reduce((sum, e) => sum + (e.items?.length ?? 0), 0),
+      /** Savol raqamlari soni (namuna qatorlari sanalmaydi) — test konstruktoridagi oraliqlar uchun */
+      questionCount: exercises.reduce((sum, e) => sum + (e.items ?? []).filter((i) => !i.meta?.example).length, 0),
       exerciseTypes: [...new Set(exercises.map((e) => e.exerciseType))],
     };
   }
@@ -167,7 +190,7 @@ export class BlocksService {
         id: r.id,
         type: 'reading',
         order: r.orderIndex,
-        reading: { title: r.title, content: r.textContent, wordCount: r.wordCount },
+        reading: { title: r.title, content: r.textContent, wordCount: r.wordCount, instructions: r.instructions ?? null },
         exercises: readingEx[i],
       })),
       ...listening.map((l, i) => ({
@@ -181,6 +204,7 @@ export class BlocksService {
           duration: l.durationSeconds,
           trackCode: l.trackCode,
           speakers: l.speakers,
+          instructions: l.instructions ?? null,
         },
         exercises: listeningEx[i],
       })),
@@ -188,7 +212,7 @@ export class BlocksService {
         id: q.id,
         type: 'quiz',
         order: q.orderIndex,
-        quiz: { title: q.title, exerciseCount: quizEx[i].exerciseCount, itemCount: quizEx[i].itemCount },
+        quiz: { title: q.title, exerciseCount: quizEx[i].exerciseCount, itemCount: quizEx[i].itemCount, instructions: q.instructions ?? null },
         exercises: quizEx[i],
       })),
     ].sort((a, b) => {
@@ -196,6 +220,17 @@ export class BlocksService {
       const B = sortMeta.get(b.id)!;
       return A.idx - B.idx || A.created - B.created;
     });
+  }
+
+  /** Yangi blok darsning OXIRIGA qo'shiladi: tartib raqami — barcha tartiblanadigan bloklar ichida eng kattasidan keyin */
+  private async nextOrderIndex(lessonId: string): Promise<number> {
+    const [r, l, q] = await Promise.all([
+      this.readingRepo.maximum('orderIndex', { lessonId }),
+      this.listeningRepo.maximum('orderIndex', { lessonId }),
+      this.quizRepo.maximum('orderIndex', { lessonId }),
+    ]);
+    const max = Math.max(r ?? -1, l ?? -1, q ?? -1);
+    return max + 1;
   }
 
   async addBlock(lessonId: string, dto: { type: string; grammarPage?: string; title?: string; textContent?: string; fileId?: string }) {
@@ -209,7 +244,7 @@ export class BlocksService {
     }
 
     if (dto.type === 'reading') {
-      const count = await this.readingRepo.count({ where: { lessonId } });
+      const count = await this.nextOrderIndex(lessonId);
       const r = await this.readingRepo.save(
         this.readingRepo.create({ lessonId, title: dto.title ?? '', textContent: dto.textContent ?? '', orderIndex: count }),
       );
@@ -217,7 +252,7 @@ export class BlocksService {
     }
 
     if (dto.type === 'listening') {
-      const count = await this.listeningRepo.count({ where: { lessonId } });
+      const count = await this.nextOrderIndex(lessonId);
       const l = await this.listeningRepo.save(
         this.listeningRepo.create({ lessonId, title: dto.title ?? '', fileId: dto.fileId ?? '', orderIndex: count }),
       );
@@ -237,7 +272,7 @@ export class BlocksService {
         };
       }
       const q = await this.quizRepo.save(
-        this.quizRepo.create({ lessonId, title: 'Quiz', orderIndex: 0 }),
+        this.quizRepo.create({ lessonId, title: 'Quiz', orderIndex: await this.nextOrderIndex(lessonId) }),
       );
       return { id: q.id, type: 'quiz', order: q.orderIndex, quiz: { title: q.title, exerciseCount: 0, itemCount: 0 } };
     }
@@ -320,6 +355,7 @@ export class BlocksService {
       readTimeMinutes: content.readingTimeMinutes,
       cefrLevel: content.cefrLevel,
       highlights: content.highlights ?? [],
+      instructions: content.instructions ?? null,
       // Savollar teacher UI formatida (mcq/true_false, options: string[]).
       questions: exercises.flatMap((e) => e.items.map((i) => this.toUiReadingQuestion(i, e.exerciseType))),
       exercises,
@@ -386,6 +422,7 @@ export class BlocksService {
     if (dto.readTimeMinutes !== undefined) content.readingTimeMinutes = dto.readTimeMinutes;
     if (dto.cefrLevel !== undefined) content.cefrLevel = dto.cefrLevel;
     if (dto.highlights !== undefined) content.highlights = dto.highlights;
+    if (dto.instructions !== undefined) content.instructions = dto.instructions || null;
     const saved = await this.readingRepo.save(content);
     return {
       id: saved.id,
@@ -397,6 +434,7 @@ export class BlocksService {
       readTimeMinutes: saved.readingTimeMinutes,
       cefrLevel: saved.cefrLevel,
       highlights: saved.highlights ?? [],
+      instructions: saved.instructions ?? null,
     };
   }
 
@@ -539,6 +577,7 @@ export class BlocksService {
       title: content.title,
       audioUrl: content.fileId || null,
       imageUrl: content.imageUrl,
+      instructions: content.instructions ?? null,
       duration: content.durationSeconds,
       trackCode: content.trackCode,
       speakers: content.speakers,
@@ -580,6 +619,7 @@ export class BlocksService {
     if (dto.trackCode !== undefined) content.trackCode = dto.trackCode;
     if (dto.speakers !== undefined) content.speakers = dto.speakers;
     if (dto.imageUrl !== undefined) content.imageUrl = dto.imageUrl ?? null;
+    if (dto.instructions !== undefined) content.instructions = dto.instructions || null;
 
     if (dto.transcript !== undefined) {
       await this.listeningTranscriptRepo.delete({ listeningId: content.id });
@@ -606,6 +646,7 @@ export class BlocksService {
       duration: saved.durationSeconds,
       trackCode: saved.trackCode,
       speakers: saved.speakers,
+      instructions: saved.instructions ?? null,
     };
   }
 
@@ -758,16 +799,17 @@ export class BlocksService {
     await this.lessonsSvc.verifyLesson(lessonId);
     const quiz = await this.quizRepo.findOne({ where: { id: blockId, lessonId } });
     if (!quiz) throw new NotFoundException('Quiz blok topilmadi');
-    return { id: quiz.id, title: quiz.title, exercises: await this.getExercises(lessonId, blockId) };
+    return { id: quiz.id, title: quiz.title, instructions: quiz.instructions ?? null, exercises: await this.getExercises(lessonId, blockId) };
   }
 
-  async saveQuiz(lessonId: string, blockId: string, dto: { title?: string }) {
+  async saveQuiz(lessonId: string, blockId: string, dto: { title?: string; instructions?: string | null }) {
     await this.lessonsSvc.verifyLesson(lessonId);
     const quiz = await this.quizRepo.findOne({ where: { id: blockId, lessonId } });
     if (!quiz) throw new NotFoundException('Quiz blok topilmadi');
     if (dto.title !== undefined) quiz.title = dto.title;
+    if (dto.instructions !== undefined) quiz.instructions = dto.instructions || null;
     const saved = await this.quizRepo.save(quiz);
-    return { id: saved.id, title: saved.title };
+    return { id: saved.id, title: saved.title, instructions: saved.instructions ?? null };
   }
 
   // ─── Mashqlar (Exercises) — UMUMIY CRUD (barcha blok turlari uchun) ────
@@ -784,9 +826,7 @@ export class BlocksService {
 
   async addExercise(lessonId: string, blockId: string, dto: AddExerciseDto) {
     const owner = await this.requireOwner(lessonId, blockId);
-    if (!Object.values(QuizExerciseType).includes(dto.exerciseType as QuizExerciseType)) {
-      throw new BadRequestException("Noto'g'ri mashq turi");
-    }
+    this.assertType(dto.exerciseType);
     const count = await this.exerciseRepo.count({ where: { ownerBlockType: owner.type, ownerBlockId: blockId } });
     const ex = await this.exerciseRepo.save(
       this.exerciseRepo.create({
@@ -796,6 +836,7 @@ export class BlocksService {
         exerciseType: dto.exerciseType as QuizExerciseType,
         title: dto.title ?? null,
         instructions: dto.instructions ?? null,
+        settings: asObject(dto.settings),
         orderIndex: count,
       }),
     );
@@ -809,13 +850,63 @@ export class BlocksService {
     if (dto.title !== undefined) ex.title = dto.title;
     if (dto.instructions !== undefined) ex.instructions = dto.instructions;
     if (dto.exerciseType !== undefined) {
-      if (!Object.values(QuizExerciseType).includes(dto.exerciseType as QuizExerciseType)) {
-        throw new BadRequestException("Noto'g'ri mashq turi");
-      }
+      this.assertType(dto.exerciseType);
       ex.exerciseType = dto.exerciseType as QuizExerciseType;
     }
+    if (dto.settings !== undefined) ex.settings = asObject(dto.settings);
     await this.exerciseRepo.save(ex);
     return this.mapExercise(ex);
+  }
+
+  /**
+   * Qolip muharriri (veb «Test qoliblari») mashqni BITTA so'rovda saqlaydi:
+   * sarlavha/topshiriq/sozlamalar + elementlar ro'yxati (yuborilgan tartibda).
+   * `id` si bor element yangilanadi (id saqlanadi — o'quvchilar javoblari yo'qolmaydi),
+   * `id` siz yangisi yaratiladi, ro'yxatda yo'qlari o'chiriladi.
+   */
+  async saveExerciseFull(lessonId: string, blockId: string, exerciseId: string, dto: SaveExerciseFullDto) {
+    await this.requireOwner(lessonId, blockId);
+    if (!Array.isArray(dto?.items)) throw new BadRequestException('items massiv bo\'lishi kerak');
+    if (dto.items.length > 300) throw new BadRequestException('Bitta mashqda 300 tadan ortiq element bo\'lmaydi');
+
+    return this.exerciseRepo.manager.transaction(async (m) => {
+      const exRepo = m.getRepository(Exercise);
+      const itRepo = m.getRepository(ExerciseItem);
+      const ex = await exRepo.findOne({ where: { id: exerciseId, ownerBlockId: blockId }, relations: ['items'] });
+      if (!ex) throw new NotFoundException('Mashq topilmadi');
+
+      if (dto.title !== undefined) ex.title = dto.title || null;
+      if (dto.instructions !== undefined) ex.instructions = dto.instructions || null;
+      if (dto.exerciseType !== undefined) {
+        this.assertType(dto.exerciseType);
+        ex.exerciseType = dto.exerciseType as QuizExerciseType;
+      }
+      if (dto.settings !== undefined) ex.settings = asObject(dto.settings);
+      const { items: _old, ...plain } = ex;
+      await exRepo.save(plain);
+
+      const existing = new Map((ex.items ?? []).map((i) => [i.id, i]));
+      const keep = new Set<string>();
+      const saved: ExerciseItem[] = [];
+      for (const [idx, raw] of dto.items.entries()) {
+        const prev = raw.id ? existing.get(raw.id) : undefined;
+        const row = prev ?? itRepo.create({ exerciseId: ex.id });
+        row.itemText = String(raw.itemText ?? '');
+        row.correctAnswer = String(raw.correctAnswer ?? '');
+        row.options = Array.isArray(raw.options) ? raw.options : null;
+        row.imageUrl = raw.imageUrl ?? null;
+        row.explanation = raw.explanation ?? null;
+        row.meta = asObject(raw.meta);
+        row.orderIndex = idx;
+        const s = await itRepo.save(row);
+        keep.add(s.id);
+        saved.push(s);
+      }
+      const drop = [...existing.keys()].filter((id) => !keep.has(id));
+      if (drop.length) await itRepo.delete(drop);
+
+      return this.mapExercise({ ...ex, items: saved } as Exercise);
+    });
   }
 
   async deleteExercise(lessonId: string, blockId: string, exerciseId: string) {
@@ -849,6 +940,7 @@ export class BlocksService {
         options: dto.options ?? null,
         imageUrl: dto.imageUrl ?? null,
         explanation: dto.explanation ?? null,
+        meta: asObject(dto.meta),
         orderIndex: count,
       }),
     );
@@ -864,6 +956,7 @@ export class BlocksService {
     if (dto.options !== undefined) item.options = dto.options;
     if (dto.imageUrl !== undefined) item.imageUrl = dto.imageUrl;
     if (dto.explanation !== undefined) item.explanation = dto.explanation;
+    if (dto.meta !== undefined) item.meta = asObject(dto.meta);
     await this.itemRepo.save(item);
     return this.mapItem(item);
   }

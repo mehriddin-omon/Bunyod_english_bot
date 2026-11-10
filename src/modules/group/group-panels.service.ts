@@ -392,7 +392,8 @@ export class GroupPanelsService {
       ),
 
       this.ds.query(
-        `SELECT user_id, is_free AS "isFree", manual_unlock_ceiling AS "manualUnlockCeiling"
+        `SELECT user_id, is_free AS "isFree", is_independent AS "isIndependent",
+                manual_unlock_ceiling AS "manualUnlockCeiling"
            FROM group_member_settings WHERE group_id = $1`,
         [groupId],
       ),
@@ -476,6 +477,7 @@ export class GroupPanelsService {
         activeDays: num(d.active_days),
 
         isFree: set.isFree ?? false,
+        isIndependent: set.isIndependent ?? false,
         manualUnlockCeiling: set.manualUnlockCeiling ?? null,
 
         lastActivityAt: lastActivityAt ? lastActivityAt.toISOString() : null,

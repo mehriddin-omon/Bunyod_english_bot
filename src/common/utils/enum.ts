@@ -51,6 +51,12 @@ export enum QuizExerciseType {
   true_false = 'true_false',
   word_bank = 'word_bank',
   translation = 'translation',
+  /** Qolip 5 — rasm (xarita) ustidagi harfli nuqtalarni joy nomlariga moslash */
+  map_labelling = 'map_labelling',
+  /** Qolip 7 — bo'laklardan gap tuzish (SVOMPT) */
+  sentence_order = 'sentence_order',
+  /** Qolip 9 — xatoli gapni tuzatish */
+  error_correction = 'error_correction',
 }
 
 export enum PartOfSpeech {

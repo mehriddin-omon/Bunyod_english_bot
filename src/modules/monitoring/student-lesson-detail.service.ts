@@ -1,4 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { chunkRanges } from '../vocabulary/vocabulary-learn.service';
+import { COIN_TEST_RULES } from '../vocabulary/vocabulary-coin-test.service';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { Role } from 'src/common/utils/enum';
@@ -218,13 +220,15 @@ export class StudentLessonDetailService {
   async getLessonVocabulary(studentId: string, lessonId: string, viewer: Viewer) {
     await this.assertVisible(studentId, viewer);
 
-    const [[lesson], words, stages, tests] = await Promise.all([
+    const [[lesson], words, stages, tests, lentaStates] = await Promise.all([
       this.ds.query(`SELECT id FROM lessons WHERE id = $1`, [lessonId]),
       this.ds.query(
         `SELECT r.id AS pair_id, src.word, trg.word AS translation,
                 COALESCE(uvp.status, 'new') AS status,
                 COALESCE(uvp.attempts, 0)::int AS attempts,
-                COALESCE(uvp.wrong_attempts, 0)::int AS wrong
+                COALESCE(uvp.wrong_attempts, 0)::int AS wrong,
+                (uvp.seen_at IS NOT NULL) AS seen,
+                COALESCE(uvp.growth_cleared, false) AS growth_cleared
            FROM vocabulary_relations r
            JOIN vocabularys src ON src.id = r.vocabulary_id AND src.lang = 'en'
            JOIN vocabularys trg ON trg.id = r.translation_id
@@ -241,13 +245,19 @@ export class StudentLessonDetailService {
         [studentId, lessonId],
       ),
       this.ds.query(
-        `SELECT id, attempt_number::int AS attempt, status, percent::int AS percent,
+        `SELECT id, attempt_number::int AS attempt, COALESCE(part, 1)::int AS part, status, percent::int AS percent,
                 correct_count::int AS correct, total_words::int AS total,
                 coins_earned::int AS coins, cards, created_at, finished_at
            FROM vocabulary_coin_tests
           WHERE user_id = $1 AND lesson_id = $2
-          ORDER BY attempt_number`,
+          ORDER BY created_at`,
         [studentId, lessonId],
+      ),
+      // Testlash lentasi holati (bo'laklar): scope `L:<lessonId>:<n>`
+      this.ds.query(
+        `SELECT scope, state, completed_at FROM vocabulary_lenta_states
+          WHERE user_id = $1 AND scope LIKE $2`,
+        [studentId, `L:${lessonId}:%`],
       ),
     ]);
     if (!lesson) throw new NotFoundException('Dars topilmadi');
@@ -256,7 +266,41 @@ export class StudentLessonDetailService {
     const mastered = count('mastered');
     const stageBy = new Map<number, any>(stages.map((r: any) => [r.stage, r]));
     const touched =
-      words.some((w: any) => w.attempts > 0 || w.status !== 'new') || stages.length > 0 || tests.length > 0;
+      words.some((w: any) => w.attempts > 0 || w.status !== 'new' || w.seen) ||
+      stages.length > 0 ||
+      tests.length > 0 ||
+      lentaStates.length > 0;
+
+    // 2026-11 oqimi: Tanishuv / Testlash (10 tadan bo'lak) / Coinli sinov (35 tadan qism)
+    const stateBy = new Map<string, any>(lentaStates.map((r: any) => [r.scope, r]));
+    const chunks = chunkRanges(words.length).map((r) => {
+      const st = stateBy.get(`L:${lessonId}:${r.n}`);
+      const s = (st?.state ?? {}) as Record<string, unknown>;
+      return {
+        n: r.n,
+        from: r.start + 1,
+        to: r.end,
+        status: (st?.completed_at ? 'done' : st ? 'in_progress' : 'new') as 'done' | 'in_progress' | 'new',
+        stage: typeof s.stage === 'number' ? s.stage : null,
+        percent: typeof s.percent === 'number' ? s.percent : null,
+      };
+    });
+    const partSize = COIN_TEST_RULES.partSize;
+    const parts = Array.from({ length: Math.ceil(words.length / partSize) }, (_, i) => {
+      const part = i + 1;
+      const done = tests.filter((t: any) => t.part === part && t.status !== 'in_progress');
+      return {
+        part,
+        from: i * partSize + 1,
+        to: Math.min(words.length, (i + 1) * partSize),
+        attempts: done.length,
+        bestPercent: done.length ? Math.max(...done.map((t: any) => t.percent)) : null,
+        coins: done.reduce((sum: number, t: any) => sum + (t.coins ?? 0), 0),
+      };
+    });
+    const growth = words.filter(
+      (w: any) => w.wrong >= 2 && w.status !== 'mastered' && !w.growth_cleared,
+    ).length;
 
     return {
       total: words.length,
@@ -265,6 +309,10 @@ export class StudentLessonDetailService {
       fresh: count('new'),
       /** mustahkam / jami; null — lug'at hali ishlanmagan */
       percent: vocabularyPercent(mastered, words.length, touched),
+      tanishuv: { seen: words.filter((w: any) => w.seen).length, total: words.length },
+      testlash: { chunks, done: chunks.filter((c) => c.status === 'done').length, growth },
+      coinParts: parts,
+      /** eskirgan 4 bosqich (2026-11 gacha) — eski ma'lumot uchun */
       stages: [1, 2, 3, 4].map((stage) => {
         const r = stageBy.get(stage);
         return {
@@ -283,6 +331,7 @@ export class StudentLessonDetailService {
         return {
           id: t.id,
           attempt: t.attempt,
+          part: t.part,
           status: t.status as 'in_progress' | 'completed' | 'abandoned',
           percent: t.percent,
           correct: t.correct,
@@ -299,6 +348,7 @@ export class StudentLessonDetailService {
         status: w.status as 'new' | 'learning' | 'mastered',
         attempts: w.attempts,
         wrong: Math.min(w.wrong, w.attempts),
+        seen: !!w.seen,
       })),
     };
   }

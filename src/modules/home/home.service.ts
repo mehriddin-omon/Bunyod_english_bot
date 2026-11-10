@@ -119,17 +119,46 @@ export class HomeService {
 
     const now = new Date();
     const oneWeekAgo = new Date(Date.now() - 7 * 86400000);
-    const [totalWords, learningWords, masteredWords, overdueWords, weeklyNew] = await Promise.all([
-      this.vocabRelationRepo.count(),
-      this.vocabProgressRepo.count({ where: { userId, status: VocabStatus.learning } }),
-      this.vocabProgressRepo.count({ where: { userId, status: VocabStatus.mastered } }),
-      this.vocabProgressRepo.count({ where: { userId, nextReviewAt: LessThan(now) } }),
-      this.vocabProgressRepo
-        .createQueryBuilder('uvp')
-        .where('uvp.user_id = :userId', { userId })
-        .andWhere('uvp.created_at >= :oneWeekAgo', { oneWeekAgo })
-        .getCount(),
-    ]);
+    // Lug'at statistikasi talabada FAQAT yetib kelgan darslar bo'yicha
+    // (Lug'at bo'limi — `VocabularyService.getStudentStats` bilan bir xil to'plam)
+    const reached = await this.lessonGatingService.getReachedLessonIds(userId);
+    let totalWords: number, learningWords: number, masteredWords: number, overdueWords: number, weeklyNew: number;
+    if (reached) {
+      const ids = [...reached];
+      const [row] = ids.length
+        ? await this.vocabRelationRepo.query(
+            `SELECT count(*)::int AS total,
+                    count(*) FILTER (WHERE uvp.status = 'learning')::int AS learning,
+                    count(*) FILTER (WHERE uvp.status = 'mastered')::int AS mastered,
+                    count(*) FILTER (WHERE uvp.next_review_at < $3)::int AS overdue,
+                    count(*) FILTER (WHERE uvp.created_at >= $4)::int AS weekly_new
+               FROM vocabulary_relations r
+               JOIN vocabularys src ON src.id = r.vocabulary_id
+               LEFT JOIN user_vocabulary_progress uvp ON uvp.pair_id = r.id AND uvp.user_id = $1
+              WHERE src.lang = 'en'
+                AND src.lesson_id = ANY($2::uuid[])
+                AND vocab_visible($1, src.lesson_id, src.set_no)`,
+            [userId, ids, now, oneWeekAgo],
+          )
+        : [{}];
+      totalWords = row?.total ?? 0;
+      learningWords = row?.learning ?? 0;
+      masteredWords = row?.mastered ?? 0;
+      overdueWords = row?.overdue ?? 0;
+      weeklyNew = row?.weekly_new ?? 0;
+    } else {
+      [totalWords, learningWords, masteredWords, overdueWords, weeklyNew] = await Promise.all([
+        this.vocabRelationRepo.count(),
+        this.vocabProgressRepo.count({ where: { userId, status: VocabStatus.learning } }),
+        this.vocabProgressRepo.count({ where: { userId, status: VocabStatus.mastered } }),
+        this.vocabProgressRepo.count({ where: { userId, nextReviewAt: LessThan(now) } }),
+        this.vocabProgressRepo
+          .createQueryBuilder('uvp')
+          .where('uvp.user_id = :userId', { userId })
+          .andWhere('uvp.created_at >= :oneWeekAgo', { oneWeekAgo })
+          .getCount(),
+      ]);
+    }
     const prevAvgScore = Math.max(0, avgScore - (gamification?.xpWeekly ? 3 : 0));
 
     return {

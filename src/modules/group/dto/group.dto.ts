@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsNumber, IsBoolean, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsNumber, IsBoolean, IsIn, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ScheduleInputDto {
@@ -74,6 +74,12 @@ export class SetManualCeilingDto {
 export class SetStudentFreeDto {
   @IsBoolean()
   isFree: boolean;
+}
+
+/** Kirish rejimi: Cheklangan · Erkin · Mustaqil (barcha darslar ochiq) */
+export class SetStudentAccessDto {
+  @IsIn(['restricted', 'free', 'independent'])
+  mode: 'restricted' | 'free' | 'independent';
 }
 
 export class UnlockNextDto {

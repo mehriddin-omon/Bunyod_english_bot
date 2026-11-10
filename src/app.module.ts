@@ -27,6 +27,7 @@ import { BroadcastsModule } from './modules/broadcasts/broadcasts.module';
 import { OnlineLessonsModule } from './modules/online-lessons/online-lessons.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { SpeakingModule } from './modules/speaking/speaking.module';
+import { PhrasesModule } from './modules/phrases/phrases.module';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { SpeakingModule } from './modules/speaking/speaking.module';
     OnlineLessonsModule,
     ChatModule,
     SpeakingModule,
+    PhrasesModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: ResponseTransformInterceptor },

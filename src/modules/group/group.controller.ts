@@ -12,6 +12,7 @@ import {
   SetAutoAdvanceDto,
   SetManualCeilingDto,
   SetStudentFreeDto,
+  SetStudentAccessDto,
   UnlockNextDto,
 } from './dto/group.dto';
 
@@ -145,6 +146,18 @@ export class GroupController {
     @Request() req,
   ) {
     return this.groupService.setStudentFree(id, studentId, dto, req.user.sub, req.user.role);
+  }
+
+  /** Kirish rejimi: restricted | free | independent («Mustaqil» — barcha darslar ochiq) */
+  @Put(':id/students/:studentId/access')
+  @Roles(Role.admin, Role.teacher)
+  async setStudentAccess(
+    @Param('id') id: string,
+    @Param('studentId') studentId: string,
+    @Body() dto: SetStudentAccessDto,
+    @Request() req,
+  ) {
+    return this.groupService.setStudentAccess(id, studentId, dto, req.user.sub, req.user.role);
   }
 
   @Post(':id/students/unlock-next')

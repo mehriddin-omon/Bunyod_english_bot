@@ -13,54 +13,72 @@ import {
   VocabularyCoinTest,
 } from 'src/common/core/entitys/vocabulary-coin-test.entity';
 import { XpSource } from 'src/common/utils/enum';
-import { LessonGatingService } from 'src/common/services/lesson-gating.service';
 import { XpService } from '../gamification/xp.service';
 import { LessonScoreService } from 'src/common/services/lesson-score.service';
 
 /**
- * LUG'AT COINLI SINOVI — QOIDALAR (2026-09, foydalanuvchi qarori).
+ * LUG'AT COINLI SINOVI — QOIDALAR (2026-11, foydalanuvchi qarori).
  *
- *  1. Dars lug'atidagi HAMMA so'z so'raladi (4 variantli, har so'zga 10 s;
- *     ulgurmasa — xato).
- *  2. So'z "mustahkam" (mastered) holatiga FAQAT shu sinov orqali o'tadi:
- *     to'g'ri topilgan so'z — mustahkam, xato — o'rganilmoqda.
- *  3. Coin:
- *       1-urinish: har to'g'ri so'z +3; 100% → +10, 90%+ → +5;
- *       2-urinish: hamma so'z qayta so'raladi, lekin coin faqat OLDINGI
- *                  urinishda xato bo'lgan so'zlar uchun (+2);
- *       3-urinish: xuddi shunday, +1;
- *       4-urinishdan boshlab so'z coini yo'q.
- *       60% dan past natija — HAR urinishda −20 (xp_total 0 dan pastga
- *       tushmaydi, qarang XpService.penalize).
- *  4. Muddat: keyingi yangi dars sinfda ochilganidan 24 soat o'tguncha
- *     topshirilsagina coin hisoblanadi (LessonGatingService.getLessonUnlockTime);
- *     muddat o'tgach sinov faqat mustahkamlash uchun — na coin, na jarima.
- *  5. Chala qoldirilgan sinov (✕ / ilova yopildi) — urinish sarflanadi,
+ *  1. Dars lug'ati 35 tadan QISMLARGA bo'linadi (o'qituvchi tartibida):
+ *     1-qism 1–35, 2-qism 36–70. Har qism alohida sinov.
+ *  2. Faqat YOZISH: o'zbekcha tarjima ko'rsatiladi, inglizcha so'z yoziladi
+ *     (har so'zga 15 s; ulgurmasa — xato). Variantli / audio savol yo'q.
+ *  3. Sinov ERKIN: oldin mashq qilmasdan ham ishlash mumkin.
+ *  4. So'z "mustahkam" (mastered) holatiga FAQAT shu sinov orqali o'tadi:
+ *     to'g'ri — mustahkam, xato — o'rganilmoqda.
+ *  5. Coin SO'Z BO'YICHA: so'z coinli sinovda 1-marta so'ralganda to'g'ri → +2,
+ *     2-marta → +1, 3-martadan boshlab 0. 100% → +5 (qismning 1–2-urinishida).
+ *     60% dan past — HAR urinishda −10 (xp_total 0 dan pastga tushmaydi).
+ *  6. Muddat YO'Q. API'dagi `deadlineAt`/`deadlinePassed` eski ilova
+ *     versiyalari uchun qoldirilgan — doim `null`/`false`.
+ *  7. Chala qoldirilgan sinov (✕ / ilova yopildi) — urinish sarflanadi,
  *     javob berilmagan so'zlar xato hisoblanadi.
+ *  8. SRS: to'g'ri → kamida 2-pog'ona (keyingi takror +7 kun), xato → 0 (+1 kun).
  */
 export const COIN_TEST_RULES = {
+  /** qism hajmi — bitta sinovda nechta so'z */
+  partSize: 35,
   /** har so'zga beriladigan vaqt (ilovadagi taymer) */
-  timeLimitSec: 10,
+  timeLimitSec: 15,
   /** server tekshiruvida tarmoq kechikishi uchun qo'shimcha */
   serverSlackSec: 4,
-  /** urinish raqamiga qarab so'z coini: 1→3, 2→2, 3→1, 4+→0 */
-  perWordByAttempt: [3, 2, 1] as const,
-  bonusFull: 10,
-  bonusHigh: 5,
+  /** so'z nechinchi marta so'ralayotganiga qarab coin: 1→2, 2→1, 3+→0 */
+  perWordByAttempt: [2, 1] as const,
+  /** 100% → +5 */
+  bonusFull: 5,
+  /** eskirgan (90% bonusi olib tashlandi) — eski ilovalar uchun 0 */
+  bonusHigh: 0,
   bonusHighThreshold: 90,
-  penalty: 20,
+  penalty: 10,
   penaltyThreshold: 60,
-  deadlineHoursAfterNextLesson: 24,
-  /** eng ko'pi bilan nechta urinish coin beradi */
-  maxCoinAttempts: 3,
+  /** bonus qismning shu urinishigacha beriladi; so'z coini ham shu songacha */
+  maxCoinAttempts: 2,
   /** shuncha soniya javobsiz turgan in_progress sinov tashlab ketilgan deb finallanadi */
-  staleAfterSec: 30,
+  staleAfterSec: 40,
 } as const;
 
+/** SRS oraliqlari (kun): pog'ona 0 → 1, 1 → 3, 2 → 7, 3 → 30; 4 — uzoq muddat */
+export const SRS_DAYS = [1, 3, 7, 30] as const;
+export const SRS_LONG_TERM_STEP = SRS_DAYS.length;
+const DAY_MS = 86_400_000;
+
+/** Pog'onaga qarab keyingi takror sanasi (uzoq muddatda null) */
+export function srsNextReview(step: number, now: Date): Date | null {
+  if (step >= SRS_LONG_TERM_STEP) return null;
+  return new Date(now.getTime() + SRS_DAYS[Math.max(0, step)] * DAY_MS);
+}
+
+/** So'z nechinchi marta so'ralayotganiga qarab coin */
+export function perWordCoin(wordAttempt: number): number {
+  return wordAttempt >= 1 && wordAttempt <= COIN_TEST_RULES.perWordByAttempt.length
+    ? COIN_TEST_RULES.perWordByAttempt[wordAttempt - 1]
+    : 0;
+}
+
 export interface CoinTestOutcome {
-  /** shu urinishda coin oladigan so'zlar soni (1-urinish — hammasi, keyin — oldin xato bo'lganlar) */
+  /** shu urinishda coin oladigan so'zlar soni */
   eligibleWords: number;
-  /** har to'g'ri so'z uchun coin */
+  /** eng katta so'z coini (ko'rsatish uchun) */
   perWord: number;
   words: number;
   bonus: number;
@@ -74,14 +92,21 @@ export function coinTestPercent(correct: number, total: number): number {
   return total > 0 ? Math.round((correct / total) * 100) : 0;
 }
 
+/** Karta uchun so'z urinishi: yangi sinovlarda `wordAttempt`, eskilarida taxminiy */
+function wordAttemptOf(card: Pick<CoinTestCard, 'prevWrong' | 'wordAttempt'>, attemptNumber: number): number {
+  if (card.wordAttempt) return card.wordAttempt;
+  if (attemptNumber <= 1) return 1;
+  return card.prevWrong ? 2 : 3;
+}
+
 /**
  * Coin hisobi — SOF funksiya (test qilish oson). Faqat qoidalarni
  * ifodalaydi, bazaga tegmaydi.
  */
 export function computeCoinTestCoins(input: {
   attemptNumber: number;
-  cards: Pick<CoinTestCard, 'correct' | 'prevWrong'>[];
-  /** muddat ichida topshirildimi */
+  cards: Pick<CoinTestCard, 'correct' | 'prevWrong' | 'wordAttempt'>[];
+  /** coin hisoblanadimi (muddat yo'q — doim true) */
   eligible: boolean;
 }): CoinTestOutcome {
   const total = input.cards.length;
@@ -93,24 +118,15 @@ export function computeCoinTestCoins(input: {
   }
 
   const attempt = Math.max(1, input.attemptNumber);
-  const perWord = attempt <= COIN_TEST_RULES.maxCoinAttempts
-    ? COIN_TEST_RULES.perWordByAttempt[attempt - 1]
-    : 0;
+  const coinOf = input.cards.map((c) => perWordCoin(wordAttemptOf(c, attempt)));
+  const words = input.cards.reduce((sum, c, i) => sum + (c.correct === true ? coinOf[i] : 0), 0);
+  const eligibleWords = coinOf.filter((v) => v > 0).length;
+  const perWord = coinOf.length ? Math.max(...coinOf) : 0;
 
-  const eligibleCards = attempt === 1 ? input.cards : input.cards.filter((c) => c.prevWrong);
-  const words = perWord * eligibleCards.filter((c) => c.correct === true).length;
-
-  const bonus = attempt === 1
-    ? percent === 100
-      ? COIN_TEST_RULES.bonusFull
-      : percent >= COIN_TEST_RULES.bonusHighThreshold
-        ? COIN_TEST_RULES.bonusHigh
-        : 0
-    : 0;
-
+  const bonus = percent === 100 && attempt <= COIN_TEST_RULES.maxCoinAttempts ? COIN_TEST_RULES.bonusFull : 0;
   const penalty = percent < COIN_TEST_RULES.penaltyThreshold ? -COIN_TEST_RULES.penalty : 0;
 
-  return { eligibleWords: eligibleCards.length, perWord, words, bonus, penalty, total: words + bonus + penalty };
+  return { eligibleWords, perWord, words, bonus, penalty, total: words + bonus + penalty };
 }
 
 /**
@@ -118,7 +134,8 @@ export function computeCoinTestCoins(input: {
  * baholaydi, obyektiv tekshirib bo'lmaydi). Turlar har karta uchun serverda
  * tasodifiy tanlanadi, ya'ni bitta sinovda aralash keladi.
  */
-const COIN_TEST_MODES: CoinTestCardMode[] = ['multiple_choice', 'audio', 'typing'];
+// 2026-11: coinli sinov faqat yozish (typing). Turlar ro'yxati eski sinovlar uchun.
+export const COIN_TEST_MODES: CoinTestCardMode[] = ['typing'];
 
 /** Shu karta uchun kutilayotgan javob: typing'da inglizcha so'z, qolganda tarjima */
 function expectedAnswerOf(card: Pick<CoinTestCard, 'mode' | 'word' | 'translation'>): string {
@@ -141,10 +158,6 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-// SRS oraliqlari — vocabulary.service.ts bilan bir xil
-const REVIEW_MS_GOOD = 7 * 86_400_000;
-const REVIEW_MS_OK = 3 * 86_400_000;
-const REVIEW_MS_FAIL = 1 * 86_400_000;
 
 @Injectable()
 export class VocabularyCoinTestService {
@@ -168,54 +181,82 @@ export class VocabularyCoinTestService {
     private readonly lessonRepo: Repository<Lesson>,
 
     private readonly xpService: XpService,
-    private readonly lessonGatingService: LessonGatingService,
     private readonly lessonScore: LessonScoreService,
   ) {}
 
   // ─── Ochiq API ────────────────────────────────────────────────────────────
 
-  /** "Coinli sinov" kartasi uchun holat: urinishlar, muddat, oxirgi natija. */
+  /**
+   * "Coinli sinov" kartasi uchun holat: qismlar (35 tadan), urinishlar,
+   * mavjud coin, oxirgi natija. Yuqori darajadagi maydonlar — 1-qism
+   * (eski ilova versiyalari uchun).
+   */
   async getStatus(userId: string, lessonId: string) {
     await this.finalizeStale(userId, lessonId);
 
-    const [tests, pairs, deadlineAt] = await Promise.all([
-      this.testRepo.find({ where: { userId, lessonId }, order: { attemptNumber: 'ASC' } }),
+    const [tests, pairs] = await Promise.all([
+      this.testRepo.find({ where: { userId, lessonId }, order: { createdAt: 'ASC' } }),
       this.loadLessonPairs(userId, lessonId),
-      this.computeDeadline(userId, lessonId),
     ]);
 
     const finished = tests.filter((t) => t.status !== CoinTestStatus.in_progress);
-    const last = finished.length ? finished[finished.length - 1] : null;
-    const nextAttempt = finished.length + 1;
-    const perWord = nextAttempt <= COIN_TEST_RULES.maxCoinAttempts
-      ? COIN_TEST_RULES.perWordByAttempt[nextAttempt - 1]
-      : 0;
-    const deadlinePassed = !!deadlineAt && Date.now() > deadlineAt.getTime();
-
+    const asked = this.wordAttemptCounts(finished);
     const pairIds = pairs.map((p) => p.id);
-    const mastered = pairIds.length
-      ? await this.progressRepo.count({ where: { userId, pairId: In(pairIds), status: VocabStatus.mastered } })
-      : 0;
+    const masteredSet = new Set(
+      pairIds.length
+        ? (await this.progressRepo.find({
+            where: { userId, pairId: In(pairIds), status: VocabStatus.mastered },
+            select: { pairId: true },
+          })).map((p) => p.pairId)
+        : [],
+    );
 
+    const partCount = Math.ceil(pairs.length / COIN_TEST_RULES.partSize);
+    const parts = Array.from({ length: partCount }, (_, i) => {
+      const part = i + 1;
+      const slice = this.slicePart(pairs, part);
+      const partTests = finished.filter((t) => (t.part ?? 1) === part);
+      const last = partTests.length ? partTests[partTests.length - 1] : null;
+      const best = partTests.reduce((m, t) => Math.max(m, t.percent ?? 0), 0);
+      const coinsLeft = slice.reduce((sum, p) => sum + perWordCoin((asked.get(p.id) ?? 0) + 1), 0);
+      return {
+        part,
+        from: i * COIN_TEST_RULES.partSize + 1,
+        to: i * COIN_TEST_RULES.partSize + slice.length,
+        totalWords: slice.length,
+        attemptsUsed: partTests.length,
+        nextAttempt: partTests.length + 1,
+        /** keyingi urinishda olish mumkin bo'lgan eng ko'p so'z coini */
+        coinsAvailable: coinsLeft,
+        bonusEligible: partTests.length + 1 <= COIN_TEST_RULES.maxCoinAttempts,
+        mastered: slice.filter((p) => masteredSet.has(p.id)).length,
+        bestPercent: partTests.length ? best : null,
+        totalCoins: partTests.reduce((sum, t) => sum + (t.coinsEarned ?? 0), 0),
+        lastResult: last ? this.buildResult(last) : null,
+      };
+    });
+
+    const first = parts[0] ?? null;
+    const last = finished.length ? finished[finished.length - 1] : null;
+    const firstNext = first?.nextAttempt ?? 1;
     return {
       lessonId,
       totalWords: pairs.length,
-      attemptsUsed: finished.length,
-      nextAttempt,
-      /** keyingi urinishda har to'g'ri so'z uchun coin (0 — coin yo'q) */
-      perWord,
-      /** keyingi urinishda coin oladigan so'zlar soni */
-      eligibleWords: nextAttempt === 1
-        ? pairs.length
-        : last
-          ? last.cards.filter((c) => c.correct !== true).length
-          : pairs.length,
-      bonusEligible: nextAttempt === 1,
-      coinsAvailable: !deadlinePassed && perWord > 0,
-      deadlineAt: deadlineAt?.toISOString() ?? null,
-      deadlinePassed,
+      partSize: COIN_TEST_RULES.partSize,
+      parts,
+      // ── eski ilova versiyalari uchun (1-qism bo'yicha)
+      attemptsUsed: first?.attemptsUsed ?? 0,
+      nextAttempt: firstNext,
+      perWord: perWordCoin(firstNext),
+      eligibleWords: first ? this.slicePart(pairs, 1).filter((p) => perWordCoin((asked.get(p.id) ?? 0) + 1) > 0).length : 0,
+      bonusEligible: firstNext <= COIN_TEST_RULES.maxCoinAttempts,
+      coinsAvailable: parts.some((p) => p.coinsAvailable > 0),
+      deadlineAt: null,
+      deadlinePassed: false,
       rules: {
+        partSize: COIN_TEST_RULES.partSize,
         timeLimitSec: COIN_TEST_RULES.timeLimitSec,
+        perWordByAttempt: COIN_TEST_RULES.perWordByAttempt,
         bonusFull: COIN_TEST_RULES.bonusFull,
         bonusHigh: COIN_TEST_RULES.bonusHigh,
         bonusHighThreshold: COIN_TEST_RULES.bonusHighThreshold,
@@ -224,115 +265,101 @@ export class VocabularyCoinTestService {
         maxCoinAttempts: COIN_TEST_RULES.maxCoinAttempts,
       },
       totalCoins: finished.reduce((sum, t) => sum + (t.coinsEarned ?? 0), 0),
-      mastered,
+      mastered: masteredSet.size,
       lastResult: last ? this.buildResult(last) : null,
     };
   }
 
-  /** Yangi urinish: hamma so'z, aralashtirilgan, 4 variant. Javoblar serverda. */
-  async start(userId: string, lessonId: string) {
+  /** Yangi urinish: qismdagi so'zlar (35 ta), aralashtirilgan, faqat yozish. Javoblar serverda. */
+  async start(userId: string, lessonId: string, part = 1) {
     const lesson = await this.lessonRepo.findOne({ where: { id: lessonId } });
     if (!lesson) throw new NotFoundException('Dars topilmadi');
 
     // Tugallanmagan sinov bo'lsa — urinish sarflanadi (qolgan so'zlar xato)
     await this.finalizeStale(userId, lessonId, true);
 
-    const pairs = await this.loadLessonPairs(userId, lessonId);
-    if (!pairs.length) throw new BadRequestException("Bu darsda lug'at so'zlari yo'q");
+    const allPairs = await this.loadLessonPairs(userId, lessonId);
+    if (!allPairs.length) throw new BadRequestException("Bu darsda lug'at so'zlari yo'q");
+    const partCount = Math.ceil(allPairs.length / COIN_TEST_RULES.partSize);
+    if (!Number.isInteger(part) || part < 1 || part > partCount) {
+      throw new BadRequestException(`Qism 1–${partCount} oralig'ida bo'lishi kerak`);
+    }
+    const pairs = this.slicePart(allPairs, part);
 
-    const [previous, deadlineAt, globalPool] = await Promise.all([
-      this.testRepo.findOne({
-        where: { userId, lessonId, status: In([CoinTestStatus.completed, CoinTestStatus.abandoned]) },
-        order: { attemptNumber: 'DESC' },
-      }),
-      this.computeDeadline(userId, lessonId),
-      // Chalg'ituvchi variantlar: avval shu darsning tarjimalari, yetmasa umumiy hovuz
-      this.wordRepo
-        .createQueryBuilder('w')
-        .select('w.word', 'word')
-        .where('w.lang = :lang', { lang: 'uz' })
-        .orderBy('RANDOM()')
-        .limit(100)
-        .getRawMany<{ word: string }>(),
-    ]);
-
-    const attemptNumber = (previous?.attemptNumber ?? 0) + 1;
+    const finished = await this.testRepo.find({
+      where: { userId, lessonId, status: In([CoinTestStatus.completed, CoinTestStatus.abandoned]) },
+      order: { createdAt: 'ASC' },
+    });
+    const asked = this.wordAttemptCounts(finished);
+    const partTests = finished.filter((t) => (t.part ?? 1) === part);
+    const previous = partTests.length ? partTests[partTests.length - 1] : null;
+    const attemptNumber = partTests.length + 1;
     const prevWrong = new Set(
       previous ? previous.cards.filter((c) => c.correct !== true).map((c) => c.pairId) : [],
     );
-    const lessonTranslations = pairs.map((p) => p.translation.word);
-    const pool = globalPool.map((d) => d.word);
 
-    const cards: CoinTestCard[] = shuffle(pairs).map((pair) => {
-      // Savol turi aralash: multiple_choice / audio / typing. Audio faqat
-      // talaffuz fayli bor so'zlarda — yo'q bo'lsa variantli savolga tushadi.
-      let mode = COIN_TEST_MODES[Math.floor(Math.random() * COIN_TEST_MODES.length)];
-      if (mode === 'audio' && !pair.vocabulary.voiceFileId) mode = 'multiple_choice';
-
-      return {
-        pairId: pair.id,
-        word: pair.vocabulary.word,
-        ipa: pair.vocabulary.ipa ?? null,
-        pos: pair.vocabulary.pos ?? null,
-        imageUrl: pair.vocabulary.imageUrl ?? null,
-        voiceFileId: pair.vocabulary.voiceFileId ?? null,
-        translation: pair.translation.word,
-        mode,
-        // Yozib javob berishda variant kerak emas
-        options: mode === 'typing' ? [] : this.buildOptions(pair.translation.word, lessonTranslations, pool),
-        prevWrong: prevWrong.has(pair.id),
-        answer: null,
-        correct: null,
-        answeredAt: null,
-        timedOut: false,
-      };
-    });
+    const cards: CoinTestCard[] = shuffle(pairs).map((pair) => ({
+      pairId: pair.id,
+      word: pair.vocabulary.word,
+      ipa: pair.vocabulary.ipa ?? null,
+      pos: pair.vocabulary.pos ?? null,
+      imageUrl: pair.vocabulary.imageUrl ?? null,
+      voiceFileId: pair.vocabulary.voiceFileId ?? null,
+      translation: pair.translation.word,
+      mode: 'typing' as CoinTestCardMode,
+      options: [],
+      prevWrong: prevWrong.has(pair.id),
+      wordAttempt: (asked.get(pair.id) ?? 0) + 1,
+      answer: null,
+      correct: null,
+      answeredAt: null,
+      timedOut: false,
+    }));
 
     const now = new Date();
     const test = await this.testRepo.save(
       this.testRepo.create({
         userId,
         lessonId,
+        part,
         attemptNumber,
         status: CoinTestStatus.in_progress,
         cards,
         currentIndex: 0,
         lastServedAt: now,
-        deadlineAt,
+        deadlineAt: null,
         totalWords: cards.length,
       }),
     );
 
-    const perWord = attemptNumber <= COIN_TEST_RULES.maxCoinAttempts
-      ? COIN_TEST_RULES.perWordByAttempt[attemptNumber - 1]
-      : 0;
-    const deadlinePassed = !!deadlineAt && now.getTime() > deadlineAt.getTime();
-
+    const coinsAvailable = cards.reduce((sum, c) => sum + perWordCoin(c.wordAttempt ?? 1), 0);
     return {
       testId: test.id,
+      part,
+      partCount,
       attemptNumber,
       totalWords: cards.length,
       timeLimitSec: COIN_TEST_RULES.timeLimitSec,
-      perWord,
-      eligibleWords: attemptNumber === 1 ? cards.length : cards.filter((c) => c.prevWrong).length,
-      bonusEligible: attemptNumber === 1,
-      coinsAvailable: !deadlinePassed && perWord > 0,
-      deadlineAt: deadlineAt?.toISOString() ?? null,
-      // To'g'ri javob YUBORILMAYDI — u har javobdan keyin qaytariladi.
-      // Typing savolida inglizcha so'z ham yuborilmaydi (javobning o'zi), faqat
-      // tarjima ko'rsatiladi; audio savolida esa so'z yozuvi yashiriladi.
+      perWord: cards.length ? Math.max(...cards.map((c) => perWordCoin(c.wordAttempt ?? 1))) : 0,
+      eligibleWords: cards.filter((c) => perWordCoin(c.wordAttempt ?? 1) > 0).length,
+      coinsAvailable: coinsAvailable > 0,
+      maxWordCoins: coinsAvailable,
+      bonusEligible: attemptNumber <= COIN_TEST_RULES.maxCoinAttempts,
+      deadlineAt: null,
+      // To'g'ri javob (inglizcha so'z) YUBORILMAYDI — u har javobdan keyin
+      // qaytariladi. Talaffuz ham berilmaydi (javobni oshkor qiladi).
       cards: cards.map((c) => ({
         pairId: c.pairId,
         mode: c.mode,
-        word: c.mode === 'multiple_choice' ? c.word : null,
-        ipa: c.mode === 'multiple_choice' ? c.ipa : null,
+        word: null,
+        ipa: null,
         pos: c.pos,
         imageUrl: c.imageUrl,
-        // Typing'da talaffuz javobni oshkor qiladi — audio berilmaydi
-        voiceFileId: c.mode === 'typing' ? null : c.voiceFileId,
-        // Typing'da tarjima savol bo'lib ko'rsatiladi
-        prompt: c.mode === 'typing' ? c.translation : null,
-        options: c.options,
+        voiceFileId: null,
+        prompt: c.translation,
+        options: [],
+        /** shu so'z to'g'ri topilsa beriladigan coin */
+        coin: perWordCoin(c.wordAttempt ?? 1),
       })),
     };
   }
@@ -421,7 +448,8 @@ export class VocabularyCoinTestService {
     const total = test.cards.length;
     const correctCount = test.cards.filter((c) => c.correct === true).length;
     const percent = coinTestPercent(correctCount, total);
-    const eligible = !test.deadlineAt || now.getTime() <= new Date(test.deadlineAt).getTime();
+    // Muddat yo'q: har qanday urinish coin/jarima qoidalari bo'yicha hisoblanadi
+    const eligible = true;
     const outcome = computeCoinTestCoins({ attemptNumber: test.attemptNumber, cards: test.cards, eligible });
 
     // ── Coin daftari (har yozuv referenceKey bilan — takror finalize hech narsa qo'shmaydi)
@@ -478,15 +506,19 @@ export class VocabularyCoinTestService {
       let progress = progressMap.get(card.pairId);
       if (!progress) {
         progress = this.progressRepo.create({
-          userId: test.userId, pairId: card.pairId, status: VocabStatus.new, attempts: 0, wrongAttempts: 0,
+          userId: test.userId, pairId: card.pairId, status: VocabStatus.new, attempts: 0, wrongAttempts: 0, srsStep: 0,
         });
       }
       progress.attempts += 1;
       if (!correct) progress.wrongAttempts += 1;
-      const errorRate = progress.wrongAttempts / progress.attempts;
-      progress.nextReviewAt = new Date(
-        now.getTime() + (correct ? (errorRate < 0.2 ? REVIEW_MS_GOOD : REVIEW_MS_OK) : REVIEW_MS_FAIL),
-      );
+      // SRS: to'g'ri → kamida 2-pog'ona (+7 kun), xato → 0 (+1 kun)
+      if (correct) {
+        progress.srsStep = Math.max(progress.srsStep ?? 0, 2);
+      } else {
+        progress.srsStep = 0;
+        progress.growthCleared = false;
+      }
+      progress.nextReviewAt = srsNextReview(progress.srsStep, now);
       progress.status = correct ? VocabStatus.mastered : VocabStatus.learning;
       updatedProgress.push(progress);
 
@@ -495,7 +527,7 @@ export class VocabularyCoinTestService {
       pair.difficulty = pair.attempts > 0 ? pair.wrongAttempts / pair.attempts : 0;
       updatedPairs.push(pair);
 
-      logs.push(this.logRepo.create({ sessionId: null, pairId: card.pairId, mode: 'multiple_choice', correct }));
+      logs.push(this.logRepo.create({ sessionId: null, pairId: card.pairId, mode: card.mode ?? 'typing', correct }));
     }
 
     test.status = status;
@@ -537,6 +569,7 @@ export class VocabularyCoinTestService {
       }));
     return {
       testId: test.id,
+      part: test.part ?? 1,
       attemptNumber: test.attemptNumber,
       status: test.status,
       totalWords: test.totalWords,
@@ -550,25 +583,12 @@ export class VocabularyCoinTestService {
         total: test.coinsEarned,
       },
       coinsEligible: test.coinsEligible,
-      deadlineAt: test.deadlineAt ? new Date(test.deadlineAt).toISOString() : null,
+      deadlineAt: null,
       /** shu sinovda mustahkam bo'lgan so'zlar (= to'g'ri javoblar) */
       mastered: test.correctCount,
       wrongWords,
       finishedAt: test.finishedAt ? new Date(test.finishedAt).toISOString() : null,
     };
-  }
-
-  /**
-   * Muddat = keyingi dars sinfda ochilgan vaqt + 24 soat.
-   * Keyingi dars yo'q (oxirgi dars) yoki hali ochilmagan — muddat yo'q (null).
-   */
-  private async computeDeadline(userId: string, lessonId: string): Promise<Date | null> {
-    const order = await this.lessonGatingService.getPublishedLessonOrder();
-    const index = order.findIndex((l) => l.id === lessonId);
-    if (index === -1 || index + 1 >= order.length) return null;
-    const openedAt = await this.lessonGatingService.getLessonUnlockTime(userId, index + 1);
-    if (!openedAt) return null;
-    return new Date(openedAt.getTime() + COIN_TEST_RULES.deadlineHoursAfterNextLesson * 3_600_000);
   }
 
   /**
@@ -591,6 +611,19 @@ export class VocabularyCoinTestService {
     }
   }
 
+  /** Qism (1 dan) bo'yicha so'zlar: 1 → 0..34, 2 → 35..69 */
+  private slicePart<T>(pairs: T[], part: number): T[] {
+    const size = COIN_TEST_RULES.partSize;
+    return pairs.slice((part - 1) * size, part * size);
+  }
+
+  /** Har so'z coinli sinovda necha marta so'ralgan (tugagan sinovlar bo'yicha) */
+  private wordAttemptCounts(finished: VocabularyCoinTest[]): Map<string, number> {
+    const map = new Map<string, number>();
+    for (const t of finished) for (const c of t.cards) map.set(c.pairId, (map.get(c.pairId) ?? 0) + 1);
+    return map;
+  }
+
   /** Darsning juftliklari (inglizcha so'z + tarjima), o'qituvchi tartibida. */
   private async loadLessonPairs(userId: string, lessonId: string): Promise<VocabularyRelation[]> {
     return this.pairRepo
@@ -603,23 +636,5 @@ export class VocabularyCoinTestService {
       .andWhere('vocab_visible(:vsUser, src.lesson_id, src.set_no)', { vsUser: userId })
       .orderBy('src.orderIndex', 'ASC')
       .getMany();
-  }
-
-  /** 3 ta chalg'ituvchi (avval shu dars tarjimalaridan) + to'g'ri javob, aralash. */
-  private buildOptions(correct: string, lessonTranslations: string[], pool: string[]): string[] {
-    const seen = new Set<string>([normalizeAnswer(correct)]);
-    const distractors: string[] = [];
-    const take = (candidates: string[]) => {
-      for (const w of shuffle(candidates)) {
-        if (distractors.length >= 3) break;
-        const key = normalizeAnswer(w);
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        distractors.push(w);
-      }
-    };
-    take(lessonTranslations);
-    if (distractors.length < 3) take(pool);
-    return shuffle([...distractors, correct]);
   }
 }

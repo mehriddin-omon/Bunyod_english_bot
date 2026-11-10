@@ -12,6 +12,7 @@ import { ensureQuizEnum } from './database/ensure-quiz-enum';
 import { ensureStudentAnswersMigrated } from './database/ensure-student-answers';
 import { ensureExercisesUnified } from './database/ensure-exercises-unified';
 import { ensureVocabSets } from './database/ensure-vocab-sets';
+import { ensureExerciseTemplates } from './database/ensure-exercise-templates';
 // import { UUIDInterceptor } from 'src/infrastructure';
 
 export default class Application {
@@ -29,6 +30,8 @@ export default class Application {
     // quiz_exercises/quiz_items -> exercises/exercise_items + reading/listening
     // savollarini yagona tizimga ko'chirish (synchronize'dan OLDIN)
     await ensureExercisesUnified();
+    // «Test qoliblari»: yangi mashq turlari (enum) + settings/meta ustunlari
+    await ensureExerciseTemplates();
 
     // rawBody — Zoom webhook imzosini tekshirish uchun (src/modules/online-lessons)
     const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });

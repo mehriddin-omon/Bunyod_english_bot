@@ -42,4 +42,12 @@ export class ExerciseItem extends BaseEntity {
 
   @Column({ type: 'int', name: 'order_index', default: 0 })
   orderIndex: number;
+
+  /**
+   * Qolip bo'yicha qo'shimcha ma'lumot (ItemMeta): bo'sh joylar javoblari (`gaps`),
+   * muqobil javoblar (`alts`), forma yorlig'i (`label`), guruh (`group`),
+   * namuna qatori (`example`), «xato yo'q» (`noError`), tuzatishlar (`fixes`).
+   */
+  @Column({ type: 'jsonb', name: 'meta', nullable: true })
+  meta: Record<string, any> | null;
 }

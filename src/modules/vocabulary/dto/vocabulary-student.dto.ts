@@ -105,14 +105,106 @@ export class ReviewPairDto {
 export class StartCoinTestDto {
   @IsUUID()
   lessonId: string;
+
+  /** qism: 1 → 1–35, 2 → 36–70 (2026-11). Yuborilmasa — 1 (eski ilova) */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  part?: number;
 }
 
 export class CoinTestAnswerDto {
   @IsUUID()
   pairId: string;
 
-  /** tanlangan variant; null — ilovadagi 10 s taymer tugadi */
+  /** yozilgan javob; null — ilovadagi taymer (15 s) tugadi */
   @IsOptional()
   @IsString()
   answer?: string | null;
+}
+
+// ─── Yangi o'qish oqimi (2026-11) ──────────────────────────────────────────
+
+export class MarkSeenDto {
+  @IsArray()
+  @IsUUID('all', { each: true })
+  pairIds: string[];
+}
+
+export class LentaAnswerDto {
+  @IsUUID()
+  pairId: string;
+
+  /** pog'ona: 1 — eshitib tanlash, 2 — harf yig'ish, 3 — yozish */
+  @IsInt()
+  @Min(1)
+  @Max(3)
+  stage: number;
+
+  @IsBoolean()
+  correct: boolean;
+}
+
+export class SaveLentaDto {
+  /** `L:<lessonId>:<n>` | `L:<lessonId>:growth` | `growth` | `saved` */
+  @IsString()
+  scope: string;
+
+  @IsOptional()
+  state?: Record<string, unknown> | null;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => LentaAnswerDto)
+  answers?: LentaAnswerDto[];
+
+  @IsOptional()
+  @IsBoolean()
+  done?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  reset?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  clearedPairIds?: string[];
+}
+
+export class ReviewAnswerDto {
+  @IsUUID()
+  pairId: string;
+
+  /** «Esladim» — true, «Eslay olmadim» — false */
+  @IsBoolean()
+  remembered: boolean;
+}
+
+// ─── Shorts + mashq birlashtirilgan oqim (2026-11) ─────────────────────
+
+export class ShortsPracticeAnswerDto {
+  @IsUUID()
+  pairId: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(3)
+  stage: number;
+
+  @IsBoolean()
+  correct: boolean;
+}
+
+export class SubmitShortsPracticeDto {
+  /** Dars ID — berilmasa navbar rejimi (SRS yangilanadi) */
+  @IsOptional()
+  @IsUUID()
+  lessonId?: string | null;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ShortsPracticeAnswerDto)
+  answers: ShortsPracticeAnswerDto[];
 }

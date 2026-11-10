@@ -13,6 +13,10 @@ import { User } from 'src/common/core/entitys/user.entity';
 import { VocabularyComment } from 'src/common/core/entitys/vocabulary-comment.entity';
 import { VocabularyCommentLike } from 'src/common/core/entitys/vocabulary-comment-like.entity';
 import { VocabularyCommentReport } from 'src/common/core/entitys/vocabulary-comment-report.entity';
+import { VocabularySaved } from 'src/common/core/entitys/vocabulary-saved.entity';
+import { VocabularyLentaState } from 'src/common/core/entitys/vocabulary-lenta-state.entity';
+import { VocabularyLearnService } from './vocabulary-learn.service';
+import { VocabularyLearnController } from './vocabulary-learn.controller';
 import { VocabularyCommentsService } from './vocabulary-comments.service';
 import { VocabularyCommentsController, VocabularyCommentsTeacherController } from './vocabulary-comments.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -31,7 +35,7 @@ import { LessonScoreModule } from 'src/common/services/lesson-score.module';
     GuardModule,
     // GamificationModule — coinli sinov coinini saqlash uchun (XpService)
     GamificationModule,
-    // LessonGatingModule — sinov muddati: keyingi dars sinfda qachon ochilgan
+    // LessonGatingModule — dars qulflari (mehmon chegarasi va h.k.)
     LessonGatingModule,
     // LessonScoreModule — lug'at natijasidan keyin dars ballini qayta hisoblash
     LessonScoreModule,
@@ -51,15 +55,18 @@ import { LessonScoreModule } from 'src/common/services/lesson-score.module';
       VocabularyComment,
       VocabularyCommentLike,
       VocabularyCommentReport,
+      VocabularySaved,
+      VocabularyLentaState,
     ]),
   ],
-  providers: [VocabularyService, VocabularyCoinTestService, VocabularyCommentsService, TtsService],
+  providers: [VocabularyService, VocabularyCoinTestService, VocabularyCommentsService, VocabularyLearnService, TtsService],
   controllers: [
     VocabularyStudentController,
+    VocabularyLearnController,
     VocabularyTeacherController,
     VocabularyCommentsController,
     VocabularyCommentsTeacherController,
   ],
-  exports: [VocabularyService, VocabularyCoinTestService, VocabularyCommentsService],
+  exports: [VocabularyService, VocabularyCoinTestService, VocabularyCommentsService, VocabularyLearnService],
 })
 export class VocabularyModule {}

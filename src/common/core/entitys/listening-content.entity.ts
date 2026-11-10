@@ -37,4 +37,8 @@ export class ListeningContent extends BaseEntity {
 
   @OneToMany(() => ListeningTranscript, (t) => t.listeningContent, { cascade: true })
   transcripts: ListeningTranscript[];
+
+  /** Qism topshirig'i (test konstruktori): «Read the following text for questions 21–29.» */
+  @Column({ type: 'text', name: 'instructions', nullable: true })
+  instructions: string | null;
 }

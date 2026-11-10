@@ -70,6 +70,7 @@ export class TeacherLessonsService {
       orderIndex: lesson.orderIndex,
       unitNumber: lesson.unit?.number ?? null,
       cefrLevel: lesson.cefrLevel ?? null,
+      estimatedMinutes: lesson.estimatedMinutes,
       status: lesson.status,
       group: lesson.group ? { id: lesson.group.id, name: lesson.group.name, color: lesson.group.color } : null,
       blocksCount: count,
@@ -234,6 +235,7 @@ export class TeacherLessonsService {
     if (dto.orderIndex !== undefined) lesson.orderIndex  = dto.orderIndex;
     if (dto.cefrLevel  !== undefined) lesson.cefrLevel   = dto.cefrLevel;
     if (dto.groupId    !== undefined) lesson.groupId     = dto.groupId;
+    if (dto.estimatedMinutes !== undefined) lesson.estimatedMinutes = dto.estimatedMinutes;
     if (dto.unitNumber !== undefined) {
       if (dto.unitNumber === null) {
         lesson.unitId = null;
