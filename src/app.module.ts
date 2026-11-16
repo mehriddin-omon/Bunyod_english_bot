@@ -28,6 +28,7 @@ import { OnlineLessonsModule } from './modules/online-lessons/online-lessons.mod
 import { ChatModule } from './modules/chat/chat.module';
 import { SpeakingModule } from './modules/speaking/speaking.module';
 import { PhrasesModule } from './modules/phrases/phrases.module';
+import { TelegramAuthModule } from './modules/telegram-auth/telegram-auth.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { PhrasesModule } from './modules/phrases/phrases.module';
     ChatModule,
     SpeakingModule,
     PhrasesModule,
+    TelegramAuthModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: ResponseTransformInterceptor },

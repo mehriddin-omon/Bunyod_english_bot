@@ -21,12 +21,15 @@ import { Vocabulary } from 'src/common/core/entitys/vocabulary.entity';
 import { VocabularyRelation } from 'src/common/core/entitys/vocabulary-relation.entity';
 import { StudentAnswersService } from './student-answers.service';
 import { LessonScoreModule } from 'src/common/services/lesson-score.module';
+import { GamificationModule } from '../gamification/gamification.module';
 
 @Module({
   imports: [
     GuardModule,
     LessonScoreModule,
     LessonGatingModule,
+    // XpService — qolip mashqlari coini (student-answers.service.ts)
+    GamificationModule,
     TypeOrmModule.forFeature([
       Lesson,
       Unit,

@@ -11,6 +11,8 @@ import { StudentAnswer } from 'src/common/core/entitys/student-answer.entity';
 import { LessonProgress } from 'src/common/core/entitys/lesson-progress.entity';
 import { UserGamification } from 'src/common/core/entitys/gamification.entity';
 import { LessonScoreService } from 'src/common/services/lesson-score.service';
+import { XpService } from '../gamification/xp.service';
+import { XpSource } from 'src/common/utils/enum';
 import {
   LessonProgressStatus,
   QuizExerciseType,
@@ -80,6 +82,8 @@ export class StudentAnswersService {
     private readonly gamificationRepo: Repository<UserGamification>,
 
     private readonly lessonScore: LessonScoreService,
+
+    private readonly xpService: XpService,
   ) {}
 
   // ── umumiy yordamchilar ────────────────────────────────────────────
@@ -226,7 +230,7 @@ export class StudentAnswersService {
     const exercises = await this.exerciseRepo.find({
       where: { ownerBlockType: blockType, ownerBlockId: blockId },
       relations: ['items'],
-      order: { orderIndex: 'ASC' },
+      order: { orderIndex: 'ASC', createdAt: 'ASC' },
     });
 
     const given = this.toMap(answers);
@@ -234,6 +238,8 @@ export class StudentAnswersService {
     const rows: { questionId: string; givenAnswer: string; isCorrect: boolean }[] = [];
     /** Ballga kiruvchi elementlar (namuna qatorlari va qo'lda tekshiriladigan tarjima — yo'q) */
     const scoredIds: string[] = [];
+    /** Coin oladigan elementlar: qolip mashqining ballga kiruvchi savollari (shu so'rovda javob berilgan) */
+    const coinIds = new Set<string>();
 
     for (const ex of exercises) {
       // Eski format: translation ballga kirmaydi. Qolip: translation `grading: 'auto'` bo'lsa kiradi.
@@ -248,10 +254,25 @@ export class StudentAnswersService {
         const isCorrect = this.gradeItem(ex, item, ans);
         results.push({ questionId: item.id, isCorrect, correctAnswer: item.correctAnswer });
         rows.push({ questionId: item.id, givenAnswer: ans, isCorrect });
+        if (template && scored) coinIds.add(item.id);
       }
     }
 
+    // Birinchi urinish — shu savolga hali javob saqlanmagan (saveAnswers SO'NGGI javobni ustidan yozadi,
+    // shuning uchun tekshiruv saqlashdan OLDIN)
+    const firstTime = new Set<string>();
+    if (coinIds.size) {
+      const prev = await this.answerRepo.find({
+        where: { userId, blockType, questionId: In([...coinIds]) },
+        select: ['questionId'],
+      });
+      const seen = new Set(prev.map((p) => p.questionId));
+      coinIds.forEach((id) => !seen.has(id) && firstTime.add(id));
+    }
+
     await this.saveAnswers(userId, lessonId, blockType, blockId, rows);
+
+    const coins = await this.awardTemplateCoins(userId, lessonId, rows, coinIds, firstTime);
 
     // Foiz — blokdagi BARCHA ballga kiruvchi savollar bo'yicha, talabaning SO'NGGI javoblaridan.
     // Bitta blokdagi mashqlar bir necha so'rovda yuborilishi mumkin (masalan grammatika
@@ -270,7 +291,48 @@ export class StudentAnswersService {
     if (total > 0 && rows.length > 0) {
       await this.updateProgressScore(userId, lessonId, SCORE_FIELD[blockType], out.percent);
     }
-    return { blockType, ...out };
+    return { blockType, ...out, ...coins };
+  }
+
+  /**
+   * QOLIP MASHQI COINI — statik grammatika mashqlari bilan BIR XIL qoida (exercise-results.service.ts):
+   * 1 to'g'ri javob = 1 coin, faqat BIRINCHI urinishda (savolga birinchi marta javob berilganda).
+   * Qayta ishlaganda coin berilmaydi — taxmin qilib bosib coin yig'ish bo'lmasin.
+   * Takrorlanmasligini `xp_transactions` (user_id, source, reference_key) unique indeksi kafolatlaydi:
+   * `reference_key` = `tpl:<exercise_item id>`, `reference_id` = dars idsi. Migratsiya kerak emas (manba exercise_complete).
+   *
+   * Qaytaradi: `coinsEarned` — shu so'rovda berilgan coin; `coins` — shu so'rovdagi savollar uchun jami olingan coin
+   * (ilovadagi «coin» plitkasi uchun: qayta urinishda kulrang ko'rinadi).
+   */
+  private async awardTemplateCoins(
+    userId: string,
+    lessonId: string,
+    rows: { questionId: string; isCorrect: boolean }[],
+    coinIds: Set<string>,
+    firstTime: Set<string>,
+  ): Promise<{ coinsEarned: number; coins: number }> {
+    if (!coinIds.size) return { coinsEarned: 0, coins: 0 };
+    const awards = rows
+      .filter((r) => r.isCorrect && coinIds.has(r.questionId) && firstTime.has(r.questionId))
+      .map((r) => ({
+        amount: 1,
+        source: XpSource.exercise_complete,
+        referenceId: lessonId,
+        referenceKey: `tpl:${r.questionId}`,
+      }));
+    let coinsEarned = 0;
+    try {
+      coinsEarned = awards.length ? await this.xpService.awardMany(userId, awards) : 0;
+    } catch {
+      // Coin xatosi javobni saqlashni yiqitmasin
+      coinsEarned = 0;
+    }
+    const paid = await this.xpService.alreadyAwarded(
+      userId,
+      XpSource.exercise_complete,
+      [...coinIds].map((id) => `tpl:${id}`),
+    );
+    return { coinsEarned, coins: paid.size };
   }
 
   // ── ESKI endpointlar (backward compat) — submitBlock ga delegatsiya ────

@@ -121,7 +121,8 @@ export class AuthService {
     return this.issueTokens(user);
   }
 
-  private async issueTokens(user: User) {
+  /** Tokenlar + user (login, mehmon, Telegram orqali kirish — bir xil javob) */
+  async issueTokens(user: User) {
     const payload = { sub: user.id, username: user.username, role: user.role };
     const accessToken = this.tokenService.createAccessToken(payload);
     const refreshToken = this.tokenService.createRefreshToken(payload);

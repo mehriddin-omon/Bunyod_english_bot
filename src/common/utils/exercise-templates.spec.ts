@@ -66,6 +66,22 @@ describe('exercise-templates: baholash', () => {
     expect(g('true_false', fix, 'false', mode)).toBe(false);
   });
 
+  it('Reading R4 — variant tanlash ichida True / False / Not Given', () => {
+    const tf = { itemText: 'The museum opens at 9.', correctAnswer: 'not_given', meta: { kind: 'tfng' as const } };
+    const st: ExerciseSettings = { v: 1, letters: 4 };
+    expect(g('multiple_choice', tf, 'not_given', st)).toBe(true);
+    expect(g('multiple_choice', tf, 'false', st)).toBe(false);
+    const mc = { itemText: 'Why?', correctAnswer: 'B', options: [{ text: 'A', isCorrect: false }, { text: 'B', isCorrect: true }] };
+    expect(g('multiple_choice', mc, 'B', st)).toBe(true);
+  });
+
+  it("Reading R5 — variant tanlash ichida matndagi bo'sh joy", () => {
+    const gap = { itemText: 'Dinosaurs made ____', correctAnswer: 'noises', meta: { kind: 'gap' as const, gaps: [['noises', 'sounds']] } };
+    const st: ExerciseSettings = { v: 1, letters: 4 };
+    expect(g('multiple_choice', gap, 'Sounds', st)).toBe(true);
+    expect(g('multiple_choice', gap, 'songs', st)).toBe(false);
+  });
+
   it('7 Gap tuzish — asosiy va muqobil tartib', () => {
     const item = {
       itemText: 'they / go / running / every morning',

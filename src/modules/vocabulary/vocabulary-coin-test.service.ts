@@ -92,11 +92,21 @@ export function coinTestPercent(correct: number, total: number): number {
   return total > 0 ? Math.round((correct / total) * 100) : 0;
 }
 
-/** Karta uchun so'z urinishi: yangi sinovlarda `wordAttempt`, eskilarida taxminiy */
-function wordAttemptOf(card: Pick<CoinTestCard, 'prevWrong' | 'wordAttempt'>, attemptNumber: number): number {
-  if (card.wordAttempt) return card.wordAttempt;
-  if (attemptNumber <= 1) return 1;
-  return card.prevWrong ? 2 : 3;
+/**
+ * Karta uchun so'z urinishi (coin hisobi uchun): yangi sinovlarda `wordAttempt`,
+ * eskilarida taxminiy. Agar so'z oldingi urinish(lar)da ALLAQACHON to'g'ri
+ * javob bergan bo'lsa — coin bir marta berilgan, qayta berilmaydi: bunday
+ * karta uchun `perWordByAttempt` oralig'idan tashqari qiymat qaytariladi va
+ * `perWordCoin(...) === 0` bo'ladi.
+ */
+export function wordAttemptOf(
+  card: Pick<CoinTestCard, 'prevWrong' | 'wordAttempt'>,
+  attemptNumber: number,
+): number {
+  const wa = card.wordAttempt ?? (attemptNumber <= 1 ? 1 : card.prevWrong ? 2 : 3);
+  // So'z oldin to'g'ri bo'lgan bo'lsa (wa>1 va prevWrong=false) — coin yo'q.
+  if (wa > 1 && card.prevWrong === false) return COIN_TEST_RULES.perWordByAttempt.length + 1;
+  return wa;
 }
 
 /**
@@ -201,6 +211,9 @@ export class VocabularyCoinTestService {
 
     const finished = tests.filter((t) => t.status !== CoinTestStatus.in_progress);
     const asked = this.wordAttemptCounts(finished);
+    // So'z oldin to'g'ri javob bergan bo'lsa — coin bir marta berilgan,
+    // keyingi urinishlarda qayta berilmaydi (loyihani proyeksiyalashda ham).
+    const earned = this.earnedPairIds(finished);
     const pairIds = pairs.map((p) => p.id);
     const masteredSet = new Set(
       pairIds.length
@@ -218,7 +231,10 @@ export class VocabularyCoinTestService {
       const partTests = finished.filter((t) => (t.part ?? 1) === part);
       const last = partTests.length ? partTests[partTests.length - 1] : null;
       const best = partTests.reduce((m, t) => Math.max(m, t.percent ?? 0), 0);
-      const coinsLeft = slice.reduce((sum, p) => sum + perWordCoin((asked.get(p.id) ?? 0) + 1), 0);
+      const coinsLeft = slice.reduce(
+        (sum, p) => sum + (earned.has(p.id) ? 0 : perWordCoin((asked.get(p.id) ?? 0) + 1)),
+        0,
+      );
       return {
         part,
         from: i * COIN_TEST_RULES.partSize + 1,
@@ -248,7 +264,11 @@ export class VocabularyCoinTestService {
       attemptsUsed: first?.attemptsUsed ?? 0,
       nextAttempt: firstNext,
       perWord: perWordCoin(firstNext),
-      eligibleWords: first ? this.slicePart(pairs, 1).filter((p) => perWordCoin((asked.get(p.id) ?? 0) + 1) > 0).length : 0,
+      eligibleWords: first
+        ? this.slicePart(pairs, 1).filter(
+            (p) => !earned.has(p.id) && perWordCoin((asked.get(p.id) ?? 0) + 1) > 0,
+          ).length
+        : 0,
       bonusEligible: firstNext <= COIN_TEST_RULES.maxCoinAttempts,
       coinsAvailable: parts.some((p) => p.coinsAvailable > 0),
       deadlineAt: null,
@@ -332,7 +352,8 @@ export class VocabularyCoinTestService {
       }),
     );
 
-    const coinsAvailable = cards.reduce((sum, c) => sum + perWordCoin(c.wordAttempt ?? 1), 0);
+    const coinOf = (c: CoinTestCard) => perWordCoin(wordAttemptOf(c, attemptNumber));
+    const coinsAvailable = cards.reduce((sum, c) => sum + coinOf(c), 0);
     return {
       testId: test.id,
       part,
@@ -340,8 +361,8 @@ export class VocabularyCoinTestService {
       attemptNumber,
       totalWords: cards.length,
       timeLimitSec: COIN_TEST_RULES.timeLimitSec,
-      perWord: cards.length ? Math.max(...cards.map((c) => perWordCoin(c.wordAttempt ?? 1))) : 0,
-      eligibleWords: cards.filter((c) => perWordCoin(c.wordAttempt ?? 1) > 0).length,
+      perWord: cards.length ? Math.max(...cards.map(coinOf)) : 0,
+      eligibleWords: cards.filter((c) => coinOf(c) > 0).length,
       coinsAvailable: coinsAvailable > 0,
       maxWordCoins: coinsAvailable,
       bonusEligible: attemptNumber <= COIN_TEST_RULES.maxCoinAttempts,
@@ -358,8 +379,8 @@ export class VocabularyCoinTestService {
         voiceFileId: null,
         prompt: c.translation,
         options: [],
-        /** shu so'z to'g'ri topilsa beriladigan coin */
-        coin: perWordCoin(c.wordAttempt ?? 1),
+        /** shu so'z to'g'ri topilsa beriladigan coin (allaqachon olingan bo'lsa — 0) */
+        coin: coinOf(c),
       })),
     };
   }
@@ -622,6 +643,13 @@ export class VocabularyCoinTestService {
     const map = new Map<string, number>();
     for (const t of finished) for (const c of t.cards) map.set(c.pairId, (map.get(c.pairId) ?? 0) + 1);
     return map;
+  }
+
+  /** Coinli sinovda kamida bir marta TO'G'RI javob berilgan so'zlar — coin olgan */
+  private earnedPairIds(finished: VocabularyCoinTest[]): Set<string> {
+    const set = new Set<string>();
+    for (const t of finished) for (const c of t.cards) if (c.correct === true) set.add(c.pairId);
+    return set;
   }
 
   /** Darsning juftliklari (inglizcha so'z + tarjima), o'qituvchi tartibida. */

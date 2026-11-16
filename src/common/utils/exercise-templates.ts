@@ -48,18 +48,28 @@ export interface ExerciseSettings {
   /** word_bank: aynan so'z yoki o'zgartirib yoziladi (wear → wears) */
   answerForm?: 'exact' | 'transform';
   /** matching: variantlar (kalit — A, B... yoki so'zning o'zi) */
-  choices?: { key: string; text: string }[];
+  choices?: { key: string; text: string; imageUrl?: string | null }[];
   /** matching: variant belgisi */
   labelStyle?: 'letter' | 'word';
+  /** Listening qolibi: shu mashqning o'z audiosi — o'quvchi ilovasida mashq tepasida qotib turadi */
+  audioUrl?: string | null;
   /** map_labelling: rasm va undagi nuqtalar (x, y — 0..1 ulush) */
   imageUrl?: string | null;
   pins?: { key: string; x: number; y: number }[];
   /** true_false: rejim */
   mode?: 'tf' | 'tfng' | 'tf_fix';
+  /** multiple_choice (Reading R4/R5): qolipning o'z matni — savollar shu matn bo'yicha (bo'sh joyli qismning oxiri — `tail`) */
+  passage?: string;
   /** translation: avtomatik (namunalar bo'yicha) yoki teacher qo'lda */
   grading?: 'auto' | 'manual';
   /** Topshiriq matni (word_bank da instructions so'zlar ro'yxati bo'lgani uchun) */
   prompt?: string;
+  /** (!) oynasidagi tushuntirish (ESLATMA) — teacher panelda yoziladi, o'quvchi mashq sarlavhasidagi (!) ni bosib o'qiydi */
+  tip?: string;
+  /** Bo'lim qolibi id si (teacher panel nomi: Grammar/Listening/Reading qoliblari, veb `presets.ts`) — baholashga ta'sir qilmaydi */
+  preset?: string;
+  /** Savol raqamlari: restart — 1 dan, continue — oldingi mashqdan davom, none — raqamsiz (faqat ko'rinish; berilmasa grammatikada restart) */
+  numbering?: 'restart' | 'continue' | 'none';
 }
 
 export interface ItemMeta {
@@ -77,6 +87,11 @@ export interface ItemMeta {
   noError?: boolean;
   /** true_false (tf_fix): noto'g'ri gapning tuzatilgan shakllari */
   fixes?: string[];
+  /**
+   * multiple_choice (Reading R4/R5) ichidagi boshqa turdagi savol:
+   * `tfng` — True / False / Not Given (`true_false` tfng kabi); `gap` — matndagi bo'sh joy (R1 kabi, `fill_in_blank` matn).
+   */
+  kind?: 'tfng' | 'gap';
 }
 
 export const isTemplateSettings = (s: unknown): s is ExerciseSettings =>
@@ -150,6 +165,10 @@ export function gradeTemplateItem(
 ): boolean {
   if (ans == null || String(ans).trim() === '') return false;
   const meta = item.meta ?? {};
+  // Reading R4: variant tanlash + True / False / Not Given bitta mashqda
+  if (type === 'multiple_choice' && meta.kind === 'tfng') return gradeTemplateItem('true_false', { ...settings, mode: 'tfng' }, item, ans);
+  // Reading R5: matndagi bo'sh joy (R1 kabi) + variant tanlash bitta mashqda
+  if (type === 'multiple_choice' && meta.kind === 'gap') return gradeTemplateItem('fill_in_blank', { ...settings, layout: 'text' }, item, ans);
 
   switch (type) {
     case 'multiple_choice': {

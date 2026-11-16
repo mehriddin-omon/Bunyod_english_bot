@@ -1,4 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Request, UseGuards } from '@nestjs/common';
+import {
+  Body, Controller, Delete, Get, HttpCode, HttpStatus,
+  Param, Patch, Post, Query, Request, UseGuards,
+} from '@nestjs/common';
 import { GuardService } from 'src/common/guard/jwt/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guard/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -113,5 +116,17 @@ export class TeacherStudentsController {
   @Patch(':id/password')
   async resetPassword(@Param('id') id: string, @Body() dto: ResetStudentPasswordDto) {
     return this.service.resetPassword(id, dto);
+  }
+
+  /**
+   * O'quvchini BUTUNLAY o'chirish: akkaunt + barcha ma'lumotlari (progress, ball,
+   * coin, lug'at, speaking, chat, davomat, bildirishnoma, izohlar, fayllar).
+   * Qaytarib bo'lmaydi, shuning uchun subTeacher ga ruxsat yo'q.
+   */
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.teacher, Role.admin)
+  async deleteStudent(@Param('id') id: string, @Request() req) {
+    return this.service.deleteStudent(id, req.user.sub);
   }
 }

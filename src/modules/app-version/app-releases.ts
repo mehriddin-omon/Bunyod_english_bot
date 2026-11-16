@@ -113,7 +113,32 @@ const NOTES_1_2_1: ReleaseNote[] = [
   },
 ];
 
+/** 1.2.2 — Telegram orqali kirish, «Ko'proq» bo'limi va sozlamalar, yangi nom (2026-11) */
+const NOTES_1_2_2: ReleaseNote[] = [
+  {
+    icon: 'account',
+    title: 'Telegram orqali kirish',
+    text: "Login va parol yozmasdan, Telegram orqali bitta bosishda kirasiz va natijangizni saqlaysiz.",
+  },
+  {
+    icon: 'star',
+    title: 'Yangi nom va ko\'rinish',
+    text: "Ilova endi DinoEnglish — yangi nom, yangi ikonka va yangilangan ekranlar.",
+  },
+  {
+    icon: 'fix',
+    title: 'Sozlamalar',
+    text: "«Ko'proq» bo'limida shrift turi va o'lchamini o'zingizga moslab olasiz.",
+  },
+  {
+    icon: 'coin',
+    title: 'Mashqlar uchun coin',
+    text: "O'qituvchi tayyorlagan testlarda ham har to'g'ri javob uchun coin olasiz.",
+  },
+];
+
 export const ANDROID_RELEASES: AppRelease[] = [
+  { versionCode: 9, versionName: '1.2.2', notes: NOTES_1_2_2 },
   { versionCode: 8, versionName: '1.2.1', notes: NOTES_1_2_1 },
   { versionCode: 6, versionName: '1.2.0', notes: NOTES_1_2 },
   { versionCode: 5, versionName: '1.1.1', notes: NOTES_1_1 },

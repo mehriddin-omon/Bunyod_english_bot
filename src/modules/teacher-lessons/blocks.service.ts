@@ -148,7 +148,8 @@ export class BlocksService {
     const exercises = await this.exerciseRepo.find({
       where: { ownerBlockType: ownerType, ownerBlockId: blockId },
       relations: ['items'],
-      order: { orderIndex: 'ASC' },
+      // Teng orderIndex bo'lsa (eski ma'lumotda takrorlar bor) — yaratilish tartibi: veb va ilova bir xil ko'rsatadi
+      order: { orderIndex: 'ASC', createdAt: 'ASC' },
     });
     return {
       exerciseCount: exercises.length,
@@ -156,6 +157,11 @@ export class BlocksService {
       /** Savol raqamlari soni (namuna qatorlari sanalmaydi) — test konstruktoridagi oraliqlar uchun */
       questionCount: exercises.reduce((sum, e) => sum + (e.items ?? []).filter((i) => !i.meta?.example).length, 0),
       exerciseTypes: [...new Set(exercises.map((e) => e.exerciseType))],
+      /** Har mashq tartib bo'yicha (birlashtirilmaydi): tur + bo'lim qolibi — test konstruktoridagi qism ro'yxati uchun */
+      exerciseKinds: exercises.map((e) => ({
+        type: e.exerciseType,
+        preset: typeof (e.settings as { preset?: unknown } | null)?.preset === 'string' ? (e.settings as { preset: string }).preset : null,
+      })),
     };
   }
 
@@ -676,7 +682,8 @@ export class BlocksService {
     });
     const correctOpt = options.find((o) => (o as any).isCorrect) as any;
 
-    const count = await this.itemRepo.count({ where: { exerciseId: ex.id } });
+    const maxItem = await this.itemRepo.maximum('orderIndex', { exerciseId: ex.id });
+    const count = (maxItem ?? -1) + 1;
     const item = await this.itemRepo.save(
       this.itemRepo.create({
         exerciseId: ex.id,
@@ -819,7 +826,8 @@ export class BlocksService {
     const exercises = await this.exerciseRepo.find({
       where: { ownerBlockType: owner.type, ownerBlockId: blockId },
       relations: ['items'],
-      order: { orderIndex: 'ASC' },
+      // Teng orderIndex bo'lsa (eski ma'lumotda takrorlar bor) — yaratilish tartibi: veb va ilova bir xil ko'rsatadi
+      order: { orderIndex: 'ASC', createdAt: 'ASC' },
     });
     return exercises.map((e) => this.mapExercise(e));
   }
@@ -827,7 +835,10 @@ export class BlocksService {
   async addExercise(lessonId: string, blockId: string, dto: AddExerciseDto) {
     const owner = await this.requireOwner(lessonId, blockId);
     this.assertType(dto.exerciseType);
-    const count = await this.exerciseRepo.count({ where: { ownerBlockType: owner.type, ownerBlockId: blockId } });
+    // Oxiriga: count emas, MAX+1 — mashq o'chirilgandan keyin count bilan takroriy orderIndex chiqib,
+    // ikki mashq joyi almashib ketardi (R3 ↔ R4)
+    const maxOrder = await this.exerciseRepo.maximum('orderIndex', { ownerBlockType: owner.type, ownerBlockId: blockId });
+    const count = (maxOrder ?? -1) + 1;
     const ex = await this.exerciseRepo.save(
       this.exerciseRepo.create({
         lessonId,

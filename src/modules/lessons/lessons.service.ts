@@ -96,7 +96,7 @@ export class LessonsService {
     const exercises = await this.exerciseRepo.find({
       where: { ownerBlockType: ownerType, ownerBlockId },
       relations: ['items'],
-      order: { orderIndex: 'ASC' },
+      order: { orderIndex: 'ASC', createdAt: 'ASC' },
     });
     return exercises.map((e) => ({
       id: e.id,
@@ -606,7 +606,7 @@ export class LessonsService {
       this.readingRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } }),
       this.listeningRepo.find({ where: { lessonId }, relations: ['transcripts'], order: { orderIndex: 'ASC' } }),
       this.quizRepo.find({ where: { lessonId }, order: { orderIndex: 'ASC' } }),
-      this.exerciseRepo.find({ where: { lessonId }, relations: ['items'], order: { orderIndex: 'ASC' } }),
+      this.exerciseRepo.find({ where: { lessonId }, relations: ['items'], order: { orderIndex: 'ASC', createdAt: 'ASC' } }),
     ]);
 
     const exercisesByOwner = new Map<string, Exercise[]>();

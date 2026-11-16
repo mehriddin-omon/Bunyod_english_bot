@@ -1,7 +1,9 @@
 import * as bcrypt from 'bcrypt';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import * as fsSync from 'fs';
+import { join, resolve, sep } from 'path';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Role, SubmissionStatus } from 'src/common/utils/enum';
 import { User } from 'src/common/core/entitys/user.entity';
 import { Group } from 'src/common/core/entitys/group.entity';
@@ -121,6 +123,85 @@ function dateLabel(date: Date | null): string {
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
 }
 
+/**
+ * Bazadagi BARCHA uuid ustunlar (jadval + ustun + null bo'la oladimi).
+ * O'quvchini o'chirishda shu ro'yxatdan foydalaniladi — jadvallar kodda qo'lda
+ * sanalmaydi, shuning uchun keyin qo'shilgan jadval ham o'zidan-o'zi kiradi.
+ *
+ * DIQQAT: tashqi kalitlar bo'yicha yurib bo'lmaydi. Bazada TypeORM qoldirgan
+ * eski camelCase ustunlar bor (`notifications.userId`) va FK ko'pincha O'SHANDA,
+ * ma'lumot esa `user_id` da. FK bo'yicha yurilsa, asl qator o'chmay qolardi.
+ */
+const UUID_COLUMNS_SQL = `
+  SELECT c.table_name AS table, c.column_name AS column, (c.is_nullable = 'YES') AS nullable
+  FROM information_schema.columns c
+  JOIN information_schema.tables t
+    ON t.table_schema = c.table_schema
+   AND t.table_name = c.table_name
+   AND t.table_type = 'BASE TABLE'
+  WHERE c.table_schema = current_schema()
+    AND c.data_type = 'uuid'
+`;
+
+/** information_schema dan kelgan nom SQL ga qo'yilishidan oldin tekshiriladi */
+const SAFE_NAME = /^[A-Za-z0-9_]+$/;
+
+/**
+ * Qator EGASI shu foydalanuvchi bo'lgan ustunlar — bunday qatorlar o'chiriladi.
+ * (snake_case — asl ustun, camelCase — TypeORM qoldirgan eski nusxasi)
+ */
+const OWNER_COLUMNS = new Set([
+  'user_id', 'userId',
+  'sender_id', 'senderId',
+  'receiver_id', 'receiverId',
+  'student_id', 'studentId',
+  'reporter_id',
+  'blocked_user_id', 'blockedUserId',
+]);
+
+/**
+ * Qator BOSHQANIKI, foydalanuvchi esa unda faqat «ishtirokchi» (kim baholadi,
+ * kim o'chirdi, kim yaratdi): qator o'chirilmaydi, ustun NULL ga tushadi.
+ * NOT NULL bo'lsa — tegilmaydi (u o'qituvchi kontenti, o'quvchida uchramaydi).
+ */
+const ACTOR_COLUMNS = new Set([
+  'created_by', 'createdBy',
+  'deleted_by', 'deletedBy',
+  'resolved_by', 'resolvedBy',
+  'graded_by', 'gradedBy', 'graderId', 'grader_id',
+  'teacher_id', 'teacherId',
+]);
+
+/**
+ * O'QITUVCHI kontenti: egalik ustuni bor bo'lsa ham qatorlari o'chirilmaydi.
+ * O'quvchida bunday yozuv bo'lmaydi — ehtiyot chorasi (tasodifan shu id uchrasa
+ * ham o'qituvchining xabarnomasi qo'ldan o'chmaydi).
+ */
+const TEACHER_OWNED_TABLES = new Set([
+  'notification_broadcasts',
+  'assignments',
+  'schedules',
+  'schedule_sessions',
+  'online_lessons',
+  'groups',
+  'phrases',
+]);
+
+/** `/uploads/...` → diskdagi fayl (faqat uploads/ ichidagisi o'chiriladi) */
+function removeUploadFile(url: string | null | undefined): void {
+  if (!url) return;
+  try {
+    const relative = url.replace(/^https?:\/\/[^/]+/, '');
+    const root = resolve(join(process.cwd(), 'uploads'));
+    const filePath = resolve(join(process.cwd(), relative));
+    // Path traversal himoyasi
+    if (!filePath.startsWith(root + sep)) return;
+    if (fsSync.existsSync(filePath)) fsSync.unlinkSync(filePath);
+  } catch {
+    // fayl o'chmasa — akkaunt baribir o'chgan, jarayon to'xtatilmaydi
+  }
+}
+
 @Injectable()
 export class TeacherStudentsService {
   constructor(
@@ -130,7 +211,10 @@ export class TeacherStudentsService {
     @InjectRepository(UserGamification) private readonly gamificationRepo: Repository<UserGamification>,
     @InjectRepository(AssignmentSubmission) private readonly submissionRepo: Repository<AssignmentSubmission>,
     @InjectRepository(Schedule) private readonly scheduleRepo: Repository<Schedule>,
+    @InjectDataSource() private readonly ds: DataSource,
   ) {}
+
+  private readonly logger = new Logger(TeacherStudentsService.name);
 
   private isPrivileged(role: Role): boolean {
     return role === Role.admin || role === Role.superAdmin;
@@ -411,6 +495,139 @@ export class TeacherStudentsService {
     user.refreshToken = null;
     await this.userRepo.save(user);
     return { message: "Parol yangilandi" };
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // DELETE /teacher/students/:id — o'quvchini butunlay o'chirish
+  // ────────────────────────────────────────────────────────────────────────
+  /**
+   * O'quvchini va UNGA TEGISHLI BARCHA ma'lumotni o'chiradi: dars progressi va
+   * ballari, coin/XP tarixi, lug'at holati, speaking ishlari (ovoz fayllari bilan),
+   * chat xabarlari, davomat, bildirishnomalar, izohlar, profil, guruh a'zoligi.
+   * Bu amal QAYTARILMAYDI.
+   *
+   * Qaysi jadval o'chishini qo'lda sanab o'tirmaymiz: `users.id` ga ishora
+   * qiluvchi HAR bir tashqi kalit bazadan topiladi va shu o'quvchining qatorlari
+   * o'chiriladi. Shu bois keyin qo'shilgan yangi jadval ham o'zidan-o'zi kiradi,
+   * eski bazada FK `ON DELETE CASCADE` siz yaratilgan bo'lsa ham ishlaydi.
+   * Hammasi bitta tranzaksiyada — yarim o'chgan akkaunt qolmaydi.
+   */
+  async deleteStudent(id: string, requesterId: string) {
+    if (id === requesterId) throw new BadRequestException("O'zingizni o'chira olmaysiz");
+    const user = await this.findStudent(id);
+
+    // Fayllar diskda — bazadan o'chirishdan oldin yo'llarini yig'ib olamiz
+    const files = await this.collectStudentFiles(user);
+
+    const removedRows = await this.ds.transaction((m) => this.purgeUser(m, id));
+
+    // Baza tozalandi — endi fayllar (o'chmasa jarayon to'xtamaydi)
+    files.forEach(removeUploadFile);
+
+    this.logger.log(
+      `O'quvchi o'chirildi: ${user.username} (${id}) — ${removedRows} qator, ${files.length} fayl`,
+    );
+
+    return {
+      message: "O'quvchi va unga tegishli barcha ma'lumotlar o'chirildi",
+      removedRows,
+      removedFiles: files.length,
+    };
+  }
+
+  /** Foydalanuvchiga tegishli hamma qatorni o'chiradi (tranzaksiya ichida) */
+  private async purgeUser(m: EntityManager, id: string): Promise<number> {
+    const columns: { table: string; column: string; nullable: boolean }[] =
+      await m.query(UUID_COLUMNS_SQL);
+
+    const usable = columns.filter((c) => SAFE_NAME.test(c.table) && SAFE_NAME.test(c.column));
+
+    // Egalik ustunlari — qator o'chadi ('users' ning o'zi oxirida)
+    let pending = usable.filter(
+      (c) =>
+        c.table !== 'users' &&
+        OWNER_COLUMNS.has(c.column) &&
+        !TEACHER_OWNED_TABLES.has(c.table),
+    );
+
+    let removed = 0;
+    let lastError: unknown = null;
+
+    // Bir jadval ikkinchisiga bog'liq bo'lishi mumkin (izoh → izohning like'i),
+    // shuning uchun o'chmay qolganlari bilan yana aylanamiz.
+    for (let pass = 0; pass < 3 && pending.length > 0; pass++) {
+      const failed: typeof pending = [];
+
+      for (const ref of pending) {
+        // Xato butun tranzaksiyani yiqitmasligi uchun har o'chirish SAVEPOINT ichida
+        await m.query('SAVEPOINT purge_step');
+        try {
+          const rows = await m.query(
+            `DELETE FROM "${ref.table}" WHERE "${ref.column}" = $1 RETURNING 1`,
+            [id],
+          );
+          removed += Array.isArray(rows) ? rows.length : 0;
+          await m.query('RELEASE SAVEPOINT purge_step');
+        } catch (err) {
+          await m.query('ROLLBACK TO SAVEPOINT purge_step');
+          lastError = err;
+          failed.push(ref);
+        }
+      }
+
+      // Bu o'tishda hech narsa o'chmadi — keyingi urinish ham foyda bermaydi
+      if (failed.length === pending.length) break;
+      pending = failed;
+    }
+
+    if (pending.length > 0) throw lastError;
+
+    // «Ishtirokchi» ustunlar: qator boshqaniki — faqat ishora bo'shatiladi
+    // (masalan `users.created_by`, `chat_messages.deleted_by`).
+    for (const ref of usable) {
+      if (!ref.nullable || !ACTOR_COLUMNS.has(ref.column)) continue;
+      await m.query('SAVEPOINT purge_null');
+      try {
+        await m.query(
+          `UPDATE "${ref.table}" SET "${ref.column}" = NULL WHERE "${ref.column}" = $1`,
+          [id],
+        );
+        await m.query('RELEASE SAVEPOINT purge_null');
+      } catch {
+        // Bo'shatib bo'lmasa (masalan generated ustun) — akkaunt o'chishiga to'sqinlik qilmaydi
+        await m.query('ROLLBACK TO SAVEPOINT purge_null');
+      }
+    }
+
+    const deleted = await m.query('DELETE FROM users WHERE id = $1 RETURNING 1', [id]);
+    removed += Array.isArray(deleted) ? deleted.length : 0;
+
+    return removed;
+  }
+
+  /** O'quvchiga tegishli yuklangan fayllar: avatar va speaking ovoz yozuvlari */
+  private async collectStudentFiles(user: User): Promise<string[]> {
+    const files: string[] = [];
+    if (user.avatarUrl) files.push(user.avatarUrl);
+
+    try {
+      const rows: { items: unknown; comment_audio_url: string | null }[] = await this.ds.query(
+        'SELECT items, comment_audio_url FROM speaking_submissions WHERE user_id = $1',
+        [user.id],
+      );
+      for (const row of rows) {
+        if (row.comment_audio_url) files.push(row.comment_audio_url);
+        const items = Array.isArray(row.items) ? row.items : [];
+        for (const item of items) {
+          const url = (item as { audioUrl?: string | null })?.audioUrl;
+          if (url) files.push(url);
+        }
+      }
+    } catch {
+      // Jadval yo'q (eski baza) — fayl yig'ilmaydi, o'chirish davom etadi
+    }
+
+    return files;
   }
 
   /** Faqat role='student' foydalanuvchini topadi — teacher boshqasini tahrirlay olmaydi */

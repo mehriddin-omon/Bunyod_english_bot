@@ -173,7 +173,9 @@ export const GRAMMAR_SCREEN_ORDER: Record<string, readonly (readonly [ex: string
  * teacher panelda ro'yxat oxirida, raqamsiz chiqadi va bo'lim foiziga KIRADI (ko'rsatilgani hisoblanadi).
  */
 export const RETIRED_GRAMMAR_TITLES: Record<string, string> = {
-  // 2026-10-30: baza tozalanib kalitlar qayta raqamlandi — hozircha muzlatilgan mashq yo'q
+  // Ilovada `retired: true` bo'lgan mashqlar (ilova: src/constants/exerciseKeys.ts).
+  // 2026-11-01: 10-darsda variantli test (ex1) o'rniga yozib to'ldirish (ex6) qo'yilgan.
+  'lesson10:grammar:ex1': "Modal fe'llar — mosini tanlash",
 };
 
 /**
