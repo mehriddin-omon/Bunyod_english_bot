@@ -137,7 +137,22 @@ const NOTES_1_2_2: ReleaseNote[] = [
   },
 ];
 
+/** 1.2.3 — kirish ekranidagi yiqilish va Telegram orqali kirish tuzatildi (2026-11) */
+const NOTES_1_2_3: ReleaseNote[] = [
+  {
+    icon: 'fix',
+    title: 'Kirish tuzatildi',
+    text: "Login yoki parol maydoniga bosilganda ilova yopilib qolardi — endi tuzatildi.",
+  },
+  {
+    icon: 'account',
+    title: 'Telegram orqali kirish',
+    text: 'Telegram orqali kirish endi oxirigacha ishlaydi — tasdiqlagach ilovaga qaytasiz, xolos.',
+  },
+];
+
 export const ANDROID_RELEASES: AppRelease[] = [
+  { versionCode: 10, versionName: '1.2.3', notes: NOTES_1_2_3 },
   { versionCode: 9, versionName: '1.2.2', notes: NOTES_1_2_2 },
   { versionCode: 8, versionName: '1.2.1', notes: NOTES_1_2_1 },
   { versionCode: 6, versionName: '1.2.0', notes: NOTES_1_2 },
