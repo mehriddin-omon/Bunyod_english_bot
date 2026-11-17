@@ -149,17 +149,19 @@ export class TelegramAuthService {
     }
 
     if (req.status === 'CONFIRMED' && req.userId) {
-      // Atomik: tokenlarni faqat bitta poll oladi
+      // Atomik: CONFIRMED -> USED ni faqat BITTA poll bajaradi (qolganiga `affected` 0 qaytadi).
+      // DIQQAT: bu yerda `.returning([...])` ISHLATILMAYDI — TypeORM uni entity property nomi
+      // bo'yicha qidiradi (`userId`), ustun nomi (`user_id`) berilsa RETURNING umuman
+      // qo'shilmaydi va `raw` bo'sh keladi: holat USED bo'ladi-yu, poll «expired» qaytaradi
+      // (2026-11-18: Telegram orqali kirish shu sababdan hech qachon yakunlanmagan).
       const res = await this.requests
         .createQueryBuilder()
         .update()
         .set({ status: 'USED' })
         .where('id = :id AND status = :s', { id: req.id, s: 'CONFIRMED' })
-        .returning(['user_id'])
         .execute();
-      const usedUserId: string | undefined = res.raw?.[0]?.user_id;
-      if (!usedUserId) return { status: 'expired' };
-      const user = await this.users.findOne({ where: { id: usedUserId } });
+      if (!res.affected) return { status: 'expired' };
+      const user = await this.users.findOne({ where: { id: req.userId } });
       if (!user) return { status: 'expired' };
       if (user.isActive === false) {
         throw new ForbiddenException("Hisobingiz bloklangan. O'qituvchingizga murojaat qiling.");

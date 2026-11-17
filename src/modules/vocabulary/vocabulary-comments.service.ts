@@ -416,7 +416,7 @@ export class VocabularyCommentsService {
         .update()
         .set({ likeCount: () => 'like_count + 1' })
         .where('id = :id', { id })
-        .returning(['like_count'])
+        .returning(['likeCount']) // property nomi: ustun nomi berilsa RETURNING tushib qoladi
         .execute();
       likeCount = Number((upd.raw as any[])[0]?.like_count ?? c.likeCount + 1);
       await this.awardMilestones(c, likeCount);
@@ -436,7 +436,7 @@ export class VocabularyCommentsService {
         .update()
         .set({ likeCount: () => 'GREATEST(like_count - 1, 0)' })
         .where('id = :id', { id })
-        .returning(['like_count'])
+        .returning(['likeCount']) // property nomi: ustun nomi berilsa RETURNING tushib qoladi
         .execute();
       likeCount = Number((upd.raw as any[])[0]?.like_count ?? Math.max(c.likeCount - 1, 0));
     }

@@ -9,18 +9,20 @@ const PLAY_URL = 'https://play.google.com/store/apps/details?id=uz.lenguara.app'
 const MSG = {
   askContact: (name: string) =>
     `Assalomu alaykum, ${name}! 👋\n\n` +
-    'Linguara — ingliz tilini o\'rganish ilovasi.\n\n' +
+    'DinoEnglish — ingliz tilini o\'rganish ilovasi.\n\n' +
     "Ro'yxatdan o'tish uchun pastdagi «📱 Telefon raqamni yuborish» tugmasini bosing. " +
     'Raqamingiz faqat sizni tanish va akkauntingizni tiklash uchun ishlatiladi.',
   contactButton: '📱 Telefon raqamni yuborish',
   confirmed: (name: string) =>
-    `✅ ${name}, kirish tasdiqlandi!\n\nEndi Linguara ilovasiga qayting — u sizni o'zi kiritadi.`,
+    `✅ ${name}, kirish tasdiqlandi!\n\n` +
+    "Endi DinoEnglish ilovasiga QAYTING (telefondagi «orqaga» tugmasi yoki ochiq ilovalar ro'yxati) — " +
+    "u sizni o'zi kiritadi. Ilovani Play Market orqali qayta ochmang: kutib turgan kirish uziladi.",
   registered: (name: string) =>
     `✅ Rahmat, ${name}! Ro'yxatdan o'tdingiz.\n\n` +
-    "Linguara ilovasida «Telegram orqali kirish» tugmasini bosing.",
+    "DinoEnglish ilovasida «Telegram orqali kirish» tugmasini bosing.",
   welcomeBack: (name: string) =>
     `Xush kelibsiz, ${name}! 👋\n\n` +
-    "Ilovaga kirish uchun Linguara'da «Telegram orqali kirish» tugmasini bosing.",
+    "Ilovaga kirish uchun DinoEnglish'da «Telegram orqali kirish» tugmasini bosing.",
   appButton: '📲 Ilovani ochish',
   expired: "⏳ Bu havolaning muddati tugagan. Ilovada «Telegram orqali kirish» tugmasini qayta bosing.",
   invalid: "Havola noto'g'ri. Ilovadan qaytadan urinib ko'ring.",
@@ -28,7 +30,7 @@ const MSG = {
   blocked: "Hisobingiz bloklangan. O'qituvchingizga murojaat qiling.",
   error: "Xatolik yuz berdi. Birozdan keyin qayta urinib ko'ring.",
   help:
-    "Bu bot Linguara ilovasiga kirish va ro'yxatdan o'tish uchun.\n\n" +
+    "Bu bot DinoEnglish ilovasiga kirish va ro'yxatdan o'tish uchun.\n\n" +
     "/start — ro'yxatdan o'tish",
 };
 
@@ -165,8 +167,13 @@ export class DinoEnglishBotService implements OnApplicationBootstrap, OnModuleDe
     );
   }
 
+  /**
+   * Tasdiqlangandan keyin Play Market tugmasi QO'YILMAYDI: u ilovani Do'kon orqali qayta ochadi,
+   * natijada ilova sovuq ishga tushib, kutib turgan kirish so'rovi yo'qoladi va foydalanuvchi
+   * «Vaqt tugadi» ni ko'radi. Foydalanuvchi ilovaga o'zi qaytadi — ilova qaytishi bilan tekshiradi.
+   */
   private replyConfirmed(ctx: Context, name: string) {
-    return this.replyWithApp(ctx, MSG.confirmed(name));
+    return ctx.reply(MSG.confirmed(name));
   }
 
   /** «Ilovani ochish» — Play Market havolasi: ilova o'rnatilgan bo'lsa «Ochish» chiqadi */
